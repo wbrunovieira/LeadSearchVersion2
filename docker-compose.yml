@@ -1,5 +1,6 @@
+version: '3.8'
+
 services:
- 
   search-google:
     build: ./search-google
     container_name: search-google
@@ -14,8 +15,37 @@ services:
         max-file: "3"
         tag: "{{.Name}}/{{.ID}}"
         labels: "service={{.Name}}"
+    environment:
+      - DB_HOST=db-postgress
+      - DB_PORT=5432
+      - DB_USER=leads_user
+      - DB_PASSWORD=secret_password
+      - DB_NAME=leads_db
+
+  db-postgress:
+    image: postgres:15-alpine
+    container_name: db-leads
+    environment:
+      - POSTGRES_USER=leads_user
+      - POSTGRES_PASSWORD=secret_password
+      - POSTGRES_DB=leads_db
+    ports:
+      - "5432:5432"
+    networks:
+      - leads-network
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.Name}}/{{.ID}}"
+        labels: "service={{.Name}}"
 
 networks:
   leads-network:
     driver: bridge
 
+volumes:
+  db_data:
