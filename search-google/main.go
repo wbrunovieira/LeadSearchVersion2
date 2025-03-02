@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 )
 
 func main() {
+
 	log.Println("Starting the service...")
 
 	if err := godotenv.Load(); err != nil {
@@ -22,7 +24,6 @@ func main() {
 	}
 	log.Println(".env file loaded (if present)")
 
-	// Lê as variáveis de ambiente para conectar ao DB
 	dbHost := os.Getenv("DB_HOST")
 	dbPort := os.Getenv("DB_PORT")
 	dbUser := os.Getenv("DB_USER")
@@ -33,14 +34,12 @@ func main() {
 		log.Fatal("Faltam variáveis de ambiente para conexão com PostgreSQL (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME).")
 	}
 
-	// Conecta ao PostgreSQL
 	db, err := database.ConnectDB(dbHost, dbPort, dbUser, dbPass, dbName)
 	if err != nil {
 		log.Fatalf("Falha na conexão com o DB: %v", err)
 	}
 	defer db.Close()
 
-	// Executa migrações (cria tabela se não existir)
 	if err := database.Migrate(db); err != nil {
 		log.Fatalf("Falha ao rodar migrações: %v", err)
 	}
@@ -49,12 +48,45 @@ func main() {
 	if apiKey == "" {
 		log.Fatal("API key is required. Set the GOOGLE_PLACES_API_KEY environment variable.")
 	}
+	mux := http.NewServeMux()
 
-	http.HandleFunc("/start-search", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/start-search", func(w http.ResponseWriter, r *http.Request) {
 		startSearchHandler(w, r, db, apiKey)
 	})
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/list-leads", func(w http.ResponseWriter, r *http.Request) {
+
+		if r.Method != http.MethodGet {
+			http.Error(w, "Método não suportado", http.StatusMethodNotAllowed)
+			return
+		}
+
+		rows, err := db.Query("SELECT name, formatted_address, place_id FROM leads ORDER BY id DESC")
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Erro ao buscar leads: %v", err), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var results []map[string]interface{}
+		for rows.Next() {
+			var name, address, placeID string
+			if err := rows.Scan(&name, &address, &placeID); err != nil {
+				log.Println("Erro no Scan de leads:", err)
+				continue
+			}
+			results = append(results, map[string]interface{}{
+				"name":              name,
+				"formatted_address": address,
+				"place_id":          placeID,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(results)
+	})
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 			return
@@ -63,9 +95,10 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
+	handlerComCORS := withCORS(mux)
+
 	log.Println("Starting server on port 8082...")
-	err = http.ListenAndServe(":8082", nil)
-	if err != nil {
+	if err := http.ListenAndServe(":8082", handlerComCORS); err != nil {
 		log.Fatalf("Failed to start HTTP server: %v", err)
 	}
 }
@@ -145,7 +178,6 @@ func startSearch(db *sql.DB, apiKey string, categoryID string, zipcodeID, radius
 		}
 		totalLeadsExtracted++
 
-		// Salva no banco
 		err = saveLead(db, details)
 		if err != nil {
 			log.Printf("Falha ao salvar lead no DB: %v", err)
@@ -163,7 +195,6 @@ func startSearch(db *sql.DB, apiKey string, categoryID string, zipcodeID, radius
 	return nil
 }
 
-// saveLead insere o lead na tabela 'leads'
 func saveLead(db *sql.DB, placeDetails map[string]interface{}) error {
 	query := `
 	INSERT INTO leads (
@@ -193,4 +224,18 @@ func saveLead(db *sql.DB, placeDetails map[string]interface{}) error {
 		return fmt.Errorf("erro no INSERT: %v", err)
 	}
 	return nil
+}
+
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

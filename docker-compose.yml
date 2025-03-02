@@ -19,14 +19,23 @@ services:
       - DB_USER=leads_user
       - DB_PASSWORD=secret_password
       - DB_NAME=leads_db
+    depends_on:
+      db-leads:
+        condition: service_healthy
 
-  db-postgress:
+  # Aqui, trocamos o nome do serviço para db-leads (em vez de db-postgress)
+  db-leads:
     image: postgres:15-alpine
-    container_name: db-leads
     environment:
       - POSTGRES_USER=leads_user
       - POSTGRES_PASSWORD=secret_password
       - POSTGRES_DB=leads_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leads_user -d leads_db || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+    container_name: db-leads
     ports:
       - "5432:5432"
     networks:
