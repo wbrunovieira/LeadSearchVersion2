@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   search-google:
     build: ./search-google
@@ -16,7 +14,7 @@ services:
         tag: "{{.Name}}/{{.ID}}"
         labels: "service={{.Name}}"
     environment:
-      - DB_HOST=db-postgress
+      - DB_HOST=db-leads
       - DB_PORT=5432
       - DB_USER=leads_user
       - DB_PASSWORD=secret_password

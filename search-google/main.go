@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,29 +9,51 @@ import (
 	"strconv"
 
 	"github.com/joho/godotenv"
-
-	// Importe seu pacote googleplaces abaixo (ajuste o path conforme o seu módulo).
-	"github.com/wbrunovieira/LeadSearchVersion2/googleplaces"
+	_ "github.com/lib/pq"
+	"github.com/wbrunovieira/LeadSearchVersion2/search-google/database"
+	"github.com/wbrunovieira/LeadSearchVersion2/search-google/googleplaces"
 )
 
 func main() {
-
 	log.Println("Starting the service...")
 
-	// Carrega variáveis de ambiente do .env (opcional, mas útil)
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("Warning: .env file not found or couldn't be loaded. Continuing...")
+	if err := godotenv.Load(); err != nil {
+		log.Println("Warning: .env file not found or not loaded. Continuing...")
+	}
+	log.Println(".env file loaded (if present)")
+
+	// Lê as variáveis de ambiente para conectar ao DB
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+	dbUser := os.Getenv("DB_USER")
+	dbPass := os.Getenv("DB_PASSWORD")
+	dbName := os.Getenv("DB_NAME")
+
+	if dbHost == "" || dbPort == "" || dbUser == "" || dbPass == "" || dbName == "" {
+		log.Fatal("Faltam variáveis de ambiente para conexão com PostgreSQL (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME).")
 	}
 
-	// Verifica se a API key está presente
+	// Conecta ao PostgreSQL
+	db, err := database.ConnectDB(dbHost, dbPort, dbUser, dbPass, dbName)
+	if err != nil {
+		log.Fatalf("Falha na conexão com o DB: %v", err)
+	}
+	defer db.Close()
+
+	// Executa migrações (cria tabela se não existir)
+	if err := database.Migrate(db); err != nil {
+		log.Fatalf("Falha ao rodar migrações: %v", err)
+	}
+
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	if apiKey == "" {
 		log.Fatal("API key is required. Set the GOOGLE_PLACES_API_KEY environment variable.")
 	}
 
-	// Registra as rotas HTTP
-	http.HandleFunc("/start-search", startSearchHandler)
+	http.HandleFunc("/start-search", func(w http.ResponseWriter, r *http.Request) {
+		startSearchHandler(w, r, db, apiKey)
+	})
+
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -47,9 +70,7 @@ func main() {
 	}
 }
 
-func startSearchHandler(w http.ResponseWriter, r *http.Request) {
-
-	// Lê parâmetros da URL: category_id, zipcode_id, radius, max_results
+func startSearchHandler(w http.ResponseWriter, r *http.Request, db *sql.DB, apiKey string) {
 	categoryID := r.URL.Query().Get("category_id")
 	zipcodeIDString := r.URL.Query().Get("zipcode_id")
 	radiusStr := r.URL.Query().Get("radius")
@@ -81,54 +102,34 @@ func startSearchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Inicia a busca
-	err = startSearch(categoryID, zipcodeID, radiusInt, maxResults)
+	err = startSearch(db, apiKey, categoryID, zipcodeID, radiusInt, maxResults)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to start search: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Fprintf(w, "Search started for categoryID: %s, zipcodeID: %d, radius: %d",
-		categoryID, zipcodeID, radiusInt)
+	fmt.Fprintf(w, "Search started for categoryID: %s, zipcodeID: %d, radius: %d", categoryID, zipcodeID, radiusInt)
 }
 
-func startSearch(categoryID string, zipcodeID, radius, maxResults int) error {
-
-	// Log inicial
+func startSearch(db *sql.DB, apiKey string, categoryID string, zipcodeID, radius, maxResults int) error {
 	log.Printf("Iniciando pesquisa: categoryID=%s, zipcodeID=%d, radius=%d, maxResults=%d",
 		categoryID, zipcodeID, radius, maxResults)
 
-	// Pega API key
-	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
-	if apiKey == "" {
-		return fmt.Errorf("API key is required. Set the GOOGLE_PLACES_API_KEY environment variable.")
-	}
-
-	// Instancia o serviço GooglePlaces
 	service := googleplaces.NewService(apiKey)
 
-	// Converte zipcode (ex: "12345") em coordenadas "lat,lng"
-	// Se zipcodeID for o próprio CEP, então:
 	zipcodeString := strconv.Itoa(zipcodeID)
 	locationStr, err := service.GeocodeZip(zipcodeString)
 	if err != nil {
 		return fmt.Errorf("erro ao geocodificar o CEP %d: %v", zipcodeID, err)
 	}
-
 	log.Printf("Localização obtida para o CEP %s: %s", zipcodeString, locationStr)
 
-	// Define quantas páginas você quer buscar. Aqui, 1 é só exemplo.
-	// O Google Places Text Search libera até 20 resultados por página, e máx de 60 no total
 	maxPages := 3
-
-	// Realiza a pesquisa. Aqui passamos "categoryID" como o “query”
-	// e a coordenada "lat,lng" como “location”
 	places, err := service.SearchPlaces(categoryID, locationStr, radius, maxPages)
 	if err != nil {
 		return fmt.Errorf("erro ao buscar lugares: %v", err)
 	}
 
-	// Itera nos resultados, obtendo detalhes de cada PlaceID
 	totalLeadsExtracted := 0
 	for _, place := range places {
 		placeID, ok := place["PlaceID"].(string)
@@ -142,18 +143,54 @@ func startSearch(categoryID string, zipcodeID, radius, maxResults int) error {
 			log.Printf("Erro ao obter detalhes do place: %v", err)
 			continue
 		}
-
 		totalLeadsExtracted++
-		log.Printf("Lead #%d extraído: %+v", totalLeadsExtracted, details)
 
-		// Se atingiu o limite de resultados
+		// Salva no banco
+		err = saveLead(db, details)
+		if err != nil {
+			log.Printf("Falha ao salvar lead no DB: %v", err)
+		} else {
+			log.Printf("Lead #%d salvo no DB com sucesso!", totalLeadsExtracted)
+		}
+
 		if totalLeadsExtracted >= maxResults {
 			log.Printf("Limite de %d resultados atingido.", maxResults)
 			break
 		}
 	}
 
-	// Log final
 	log.Printf("Busca concluída com sucesso! Total de leads: %d", totalLeadsExtracted)
+	return nil
+}
+
+// saveLead insere o lead na tabela 'leads'
+func saveLead(db *sql.DB, placeDetails map[string]interface{}) error {
+	query := `
+	INSERT INTO leads (
+		name,
+		formatted_address,
+		city,
+		state,
+		country,
+		phone,
+		rating,
+		place_id,
+		source
+	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'google_places')
+	`
+
+	_, err := db.Exec(query,
+		placeDetails["Name"],
+		placeDetails["FormattedAddress"],
+		placeDetails["City"],
+		placeDetails["State"],
+		placeDetails["Country"],
+		placeDetails["InternationalPhoneNumber"],
+		placeDetails["Rating"],
+		placeDetails["PlaceID"],
+	)
+	if err != nil {
+		return fmt.Errorf("erro no INSERT: %v", err)
+	}
 	return nil
 }
