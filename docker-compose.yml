@@ -41,6 +41,16 @@ services:
         tag: "{{.Name}}/{{.ID}}"
         labels: "service={{.Name}}"
 
+  front-web:
+    build: ./front-web
+    container_name: front-web
+    ports:
+      - "5173:5173"
+    depends_on:
+      - search-google
+    networks:
+      - leads-network
+
 networks:
   leads-network:
     driver: bridge
