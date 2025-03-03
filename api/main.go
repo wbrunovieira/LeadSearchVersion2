@@ -1,5 +1,3 @@
-// /api/main.go
-
 package main
 
 import (
@@ -11,8 +9,7 @@ import (
 	"strings"
 
 	_ "github.com/lib/pq"
-	"github.com/wbrunovieira/LeadSearchVersion2/db" // importe o pacote db (aqui o módulo foi definido como "github.com/wbrunovieira/LeadSearchVersion2")
-	// seu outro pacote
+	"github.com/wbrunovieira/LeadSearchVersion2/db"
 )
 
 func main() {
@@ -24,7 +21,6 @@ func main() {
 	}
 	fmt.Println("API rodando na porta", port)
 
-	// Conecta ao banco de dados usando o pacote db.
 	if err := db.Connect(); err != nil {
 		log.Fatalf("Erro ao conectar ao banco de dados: %v", err)
 	}
@@ -34,7 +30,9 @@ func main() {
 	}
 	defer db.Close()
 
-	http.HandleFunc("/save-leads", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/save-leads", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Endpoint /save-leads acessado de %s usando o método %s", r.RemoteAddr, r.Method)
 
 		if r.Method != http.MethodPost {
@@ -43,7 +41,6 @@ func main() {
 			return
 		}
 
-		// Decodifica o corpo JSON em um array de maps
 		var leadsData []map[string]interface{}
 		err := json.NewDecoder(r.Body).Decode(&leadsData)
 		if err != nil {
@@ -53,7 +50,6 @@ func main() {
 		}
 		log.Printf("Recebidos %d leads para salvar", len(leadsData))
 
-		// Itera sobre cada lead recebido e tenta salvar
 		for i, data := range leadsData {
 			log.Printf("Processando lead #%d: %+v", i+1, data)
 			err = saveLead(data)
@@ -70,7 +66,41 @@ func main() {
 		w.Write([]byte("Leads salvos com sucesso!"))
 	})
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/list-leads", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Endpoint /list-leads acessado de %s usando o método %s", r.RemoteAddr, r.Method)
+
+		if r.Method != http.MethodGet {
+			log.Printf("Método inválido %s. Apenas GET é permitido.", r.Method)
+			http.Error(w, "Método não permitido. Use GET.", http.StatusMethodNotAllowed)
+			return
+		}
+
+		leads, err := db.GetLeads()
+		if err != nil {
+			log.Printf("Erro ao buscar leads: %v", err)
+			http.Error(w, fmt.Sprintf("Falha ao buscar leads: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Loga cada lead encontrado
+		for i, lead := range leads {
+			log.Printf("Lead #%d: %+v", i+1, lead)
+		}
+
+		jsonResponse, err := json.Marshal(leads)
+		if err != nil {
+			log.Printf("Erro ao converter leads para JSON: %v", err)
+			http.Error(w, fmt.Sprintf("Falha ao converter dados: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsonResponse)
+		log.Printf("Retornados %d leads com sucesso.", len(leads))
+	})
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 			return
@@ -79,12 +109,13 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
+	handler := withCORS(mux)
+
 	log.Println("Starting server on port", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
 
 func saveLead(placeDetails map[string]interface{}) error {
-	// Use o tipo Lead do pacote db, referenciando o pacote "db" e não a variável.
 	lead := db.Lead{}
 
 	if v, ok := placeDetails["Name"].(string); ok {
@@ -165,7 +196,6 @@ func saveLead(placeDetails map[string]interface{}) error {
 
 	lead.Source = "GooglePlaces"
 
-	// Usa a função CreateLead do pacote db para salvar o lead.
 	err := db.CreateLead(&lead)
 	if err != nil {
 		log.Printf("Erro ao salvar lead no banco de dados: %v", err)
@@ -173,4 +203,16 @@ func saveLead(placeDetails map[string]interface{}) error {
 	}
 	log.Printf("Lead salvo no banco de dados: %+v", lead)
 	return nil
+}
+
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

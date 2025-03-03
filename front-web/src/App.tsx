@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
+// /src/App.tsx
+import { useState } from 'react';
+import LeadList from './components/LeadList';
 
-// Define a estrutura dos dados que vem do backend
 interface Lead {
-  name: string;
-  formatted_address: string;
-  place_id: string;
-  // adicione outros campos se necessário
+  [key: string]: any;
 }
 
 function App() {
@@ -18,12 +16,13 @@ function App() {
   const [message, setMessage] = useState<string>('');
   const [leads, setLeads] = useState<Lead[]>([]);
 
-  // const BACKEND_URL = 'http://localhost:8082';
-  const BACKEND_URL = 'http://192.168.0.9:8082/';
+  const BACKEND_URL_Search_GOOGLE =
+    'http://192.168.0.9:8082';
+  const BACKEND_URL_API = 'http://192.168.0.9:8085';
 
   const handleStartSearch = async () => {
     try {
-      const url = `${BACKEND_URL}/start-search?category_id=${categoryID}&zipcode_id=${zipcodeID}&radius=${radius}&max_results=${maxResults}`;
+      const url = `${BACKEND_URL_Search_GOOGLE}/start-search?category_id=${categoryID}&zipcode_id=${zipcodeID}&radius=${radius}&max_results=${maxResults}`;
       const response = await fetch(url);
       if (response.ok) {
         const text = await response.text();
@@ -39,10 +38,12 @@ function App() {
 
   const handleGetLeads = async () => {
     try {
-      const url = `${BACKEND_URL}/list-leads`;
+      const url = `${BACKEND_URL_API}/list-leads`;
       const response = await fetch(url);
+      console.log('leads list response', response);
       if (response.ok) {
         const data: Lead[] = await response.json();
+        console.log('leads list data', data);
         setLeads(data);
       } else {
         setMessage('Erro ao buscar leads');
@@ -100,14 +101,7 @@ function App() {
       <h2>Leads Salvos</h2>
       <button onClick={handleGetLeads}>Listar Leads</button>
 
-      <ul>
-        {leads.map((lead, index) => (
-          <li key={index}>
-            {lead.name} - {lead.formatted_address} -{' '}
-            {lead.place_id}
-          </li>
-        ))}
-      </ul>
+      <LeadList leads={leads} />
     </div>
   );
 }
