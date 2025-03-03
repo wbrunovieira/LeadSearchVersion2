@@ -1,8 +1,6 @@
 package main
 
 import (
-	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,82 +8,31 @@ import (
 	"strconv"
 
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
-	"github.com/wbrunovieira/LeadSearchVersion2/search-google/database"
 	"github.com/wbrunovieira/LeadSearchVersion2/search-google/googleplaces"
 )
 
 func main() {
+	log.Println("Starting the API service...")
 
-	log.Println("Starting the service...")
-
+	// Carrega variáveis de ambiente
 	if err := godotenv.Load(); err != nil {
 		log.Println("Warning: .env file not found or not loaded. Continuing...")
 	}
 	log.Println(".env file loaded (if present)")
 
-	dbHost := os.Getenv("DB_HOST")
-	dbPort := os.Getenv("DB_PORT")
-	dbUser := os.Getenv("DB_USER")
-	dbPass := os.Getenv("DB_PASSWORD")
-	dbName := os.Getenv("DB_NAME")
-
-	if dbHost == "" || dbPort == "" || dbUser == "" || dbPass == "" || dbName == "" {
-		log.Fatal("Faltam variáveis de ambiente para conexão com PostgreSQL (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME).")
+	port := os.Getenv("PORT")
+	if port == "" {
+		log.Fatal("PORT não definido no ambiente")
 	}
+	fmt.Println("API rodando na porta", port)
 
-	db, err := database.ConnectDB(dbHost, dbPort, dbUser, dbPass, dbName)
-	if err != nil {
-		log.Fatalf("Falha na conexão com o DB: %v", err)
-	}
-	defer db.Close()
-
-	if err := database.Migrate(db); err != nil {
-		log.Fatalf("Falha ao rodar migrações: %v", err)
-	}
-
-	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
-	if apiKey == "" {
-		log.Fatal("API key is required. Set the GOOGLE_PLACES_API_KEY environment variable.")
-	}
+	// Configura as rotas usando um mux
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/start-search", func(w http.ResponseWriter, r *http.Request) {
-		startSearchHandler(w, r, db, apiKey)
-	})
+	// Rota para iniciar a busca (sem salvar no BD)
+	mux.HandleFunc("/start-search", startSearchHandler)
 
-	mux.HandleFunc("/list-leads", func(w http.ResponseWriter, r *http.Request) {
-
-		if r.Method != http.MethodGet {
-			http.Error(w, "Método não suportado", http.StatusMethodNotAllowed)
-			return
-		}
-
-		rows, err := db.Query("SELECT name, formatted_address, place_id FROM leads ORDER BY id DESC")
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Erro ao buscar leads: %v", err), http.StatusInternalServerError)
-			return
-		}
-		defer rows.Close()
-
-		var results []map[string]interface{}
-		for rows.Next() {
-			var name, address, placeID string
-			if err := rows.Scan(&name, &address, &placeID); err != nil {
-				log.Println("Erro no Scan de leads:", err)
-				continue
-			}
-			results = append(results, map[string]interface{}{
-				"name":              name,
-				"formatted_address": address,
-				"place_id":          placeID,
-			})
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(results)
-	})
-
+	// Rota de healthcheck
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -95,15 +42,23 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
+	// Aplica middleware CORS a todas as rotas
 	handlerComCORS := withCORS(mux)
 
-	log.Println("Starting server on port 8082...")
-	if err := http.ListenAndServe(":8082", handlerComCORS); err != nil {
-		log.Fatalf("Failed to start HTTP server: %v", err)
-	}
+	log.Println("Starting server on port", port)
+	log.Fatal(http.ListenAndServe(":"+port, handlerComCORS))
 }
 
-func startSearchHandler(w http.ResponseWriter, r *http.Request, db *sql.DB, apiKey string) {
+// startSearchHandler processa a busca via Google Places.
+// Agora, essa rota não salva os leads em um banco, mas somente executa a busca
+// e loga os resultados.
+func startSearchHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Método não permitido. Use GET.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Lê os parâmetros da URL
 	categoryID := r.URL.Query().Get("category_id")
 	zipcodeIDString := r.URL.Query().Get("zipcode_id")
 	radiusStr := r.URL.Query().Get("radius")
@@ -135,16 +90,24 @@ func startSearchHandler(w http.ResponseWriter, r *http.Request, db *sql.DB, apiK
 		}
 	}
 
-	err = startSearch(db, apiKey, categoryID, zipcodeID, radiusInt, maxResults)
+	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+	if apiKey == "" {
+		http.Error(w, "API key not provided", http.StatusInternalServerError)
+		return
+	}
+
+	err = startSearch(apiKey, categoryID, zipcodeID, radiusInt, maxResults)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to start search: %v", err), http.StatusInternalServerError)
 		return
 	}
 
+	// Resposta simples informando que a busca foi iniciada.
 	fmt.Fprintf(w, "Search started for categoryID: %s, zipcodeID: %d, radius: %d", categoryID, zipcodeID, radiusInt)
 }
 
-func startSearch(db *sql.DB, apiKey string, categoryID string, zipcodeID, radius, maxResults int) error {
+// startSearch executa a lógica de busca usando o serviço do Google Places.
+func startSearch(apiKey string, categoryID string, zipcodeID, radius, maxResults int) error {
 	log.Printf("Iniciando pesquisa: categoryID=%s, zipcodeID=%d, radius=%d, maxResults=%d",
 		categoryID, zipcodeID, radius, maxResults)
 
@@ -164,6 +127,7 @@ func startSearch(db *sql.DB, apiKey string, categoryID string, zipcodeID, radius
 	}
 
 	totalLeadsExtracted := 0
+	// Em vez de salvar no banco, apenas logamos os detalhes dos leads.
 	for _, place := range places {
 		placeID, ok := place["PlaceID"].(string)
 		if !ok {
@@ -177,13 +141,7 @@ func startSearch(db *sql.DB, apiKey string, categoryID string, zipcodeID, radius
 			continue
 		}
 		totalLeadsExtracted++
-
-		err = saveLead(db, details)
-		if err != nil {
-			log.Printf("Falha ao salvar lead no DB: %v", err)
-		} else {
-			log.Printf("Lead #%d salvo no DB com sucesso!", totalLeadsExtracted)
-		}
+		log.Printf("Lead #%d obtido: %+v", totalLeadsExtracted, details)
 
 		if totalLeadsExtracted >= maxResults {
 			log.Printf("Limite de %d resultados atingido.", maxResults)
@@ -195,47 +153,15 @@ func startSearch(db *sql.DB, apiKey string, categoryID string, zipcodeID, radius
 	return nil
 }
 
-func saveLead(db *sql.DB, placeDetails map[string]interface{}) error {
-	query := `
-	INSERT INTO leads (
-		name,
-		formatted_address,
-		city,
-		state,
-		country,
-		phone,
-		rating,
-		place_id,
-		source
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'google_places')
-	`
-
-	_, err := db.Exec(query,
-		placeDetails["Name"],
-		placeDetails["FormattedAddress"],
-		placeDetails["City"],
-		placeDetails["State"],
-		placeDetails["Country"],
-		placeDetails["InternationalPhoneNumber"],
-		placeDetails["Rating"],
-		placeDetails["PlaceID"],
-	)
-	if err != nil {
-		return fmt.Errorf("erro no INSERT: %v", err)
-	}
-	return nil
-}
-
+// withCORS é um middleware que adiciona os cabeçalhos CORS a todas as requisições.
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
 		if r.Method == http.MethodOptions {
 			return
 		}
-
 		next.ServeHTTP(w, r)
 	})
 }
