@@ -1,6 +1,9 @@
+// /search-google/main.go
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,7 +17,6 @@ import (
 func main() {
 	log.Println("Starting the API service...")
 
-	// Carrega variáveis de ambiente
 	if err := godotenv.Load(); err != nil {
 		log.Println("Warning: .env file not found or not loaded. Continuing...")
 	}
@@ -26,13 +28,10 @@ func main() {
 	}
 	fmt.Println("API rodando na porta", port)
 
-	// Configura as rotas usando um mux
 	mux := http.NewServeMux()
 
-	// Rota para iniciar a busca (sem salvar no BD)
 	mux.HandleFunc("/start-search", startSearchHandler)
 
-	// Rota de healthcheck
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -42,23 +41,18 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
-	// Aplica middleware CORS a todas as rotas
 	handlerComCORS := withCORS(mux)
 
 	log.Println("Starting server on port", port)
 	log.Fatal(http.ListenAndServe(":"+port, handlerComCORS))
 }
 
-// startSearchHandler processa a busca via Google Places.
-// Agora, essa rota não salva os leads em um banco, mas somente executa a busca
-// e loga os resultados.
 func startSearchHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Método não permitido. Use GET.", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Lê os parâmetros da URL
 	categoryID := r.URL.Query().Get("category_id")
 	zipcodeIDString := r.URL.Query().Get("zipcode_id")
 	radiusStr := r.URL.Query().Get("radius")
@@ -102,11 +96,9 @@ func startSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resposta simples informando que a busca foi iniciada.
 	fmt.Fprintf(w, "Search started for categoryID: %s, zipcodeID: %d, radius: %d", categoryID, zipcodeID, radiusInt)
 }
 
-// startSearch executa a lógica de busca usando o serviço do Google Places.
 func startSearch(apiKey string, categoryID string, zipcodeID, radius, maxResults int) error {
 	log.Printf("Iniciando pesquisa: categoryID=%s, zipcodeID=%d, radius=%d, maxResults=%d",
 		categoryID, zipcodeID, radius, maxResults)
@@ -127,7 +119,8 @@ func startSearch(apiKey string, categoryID string, zipcodeID, radius, maxResults
 	}
 
 	totalLeadsExtracted := 0
-	// Em vez de salvar no banco, apenas logamos os detalhes dos leads.
+	var leads []map[string]interface{}
+
 	for _, place := range places {
 		placeID, ok := place["PlaceID"].(string)
 		if !ok {
@@ -142,6 +135,11 @@ func startSearch(apiKey string, categoryID string, zipcodeID, radius, maxResults
 		}
 		totalLeadsExtracted++
 		log.Printf("Lead #%d obtido: %+v", totalLeadsExtracted, details)
+		leads = append(leads, details)
+
+		if err := sendLeadsToAPI(leads); err != nil {
+			return fmt.Errorf("erro ao enviar leads para a API: %v", err)
+		}
 
 		if totalLeadsExtracted >= maxResults {
 			log.Printf("Limite de %d resultados atingido.", maxResults)
@@ -150,10 +148,10 @@ func startSearch(apiKey string, categoryID string, zipcodeID, radius, maxResults
 	}
 
 	log.Printf("Busca concluída com sucesso! Total de leads: %d", totalLeadsExtracted)
+
 	return nil
 }
 
-// withCORS é um middleware que adiciona os cabeçalhos CORS a todas as requisições.
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -164,4 +162,35 @@ func withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func sendLeadsToAPI(leads []map[string]interface{}) error {
+	log.Printf("Iniciando envio de %d leads para a API...", len(leads))
+
+	jsonData, err := json.Marshal(leads)
+	if err != nil {
+		log.Printf("Erro ao converter leads para JSON: %v", err)
+		return fmt.Errorf("erro ao converter leads para JSON: %v", err)
+	}
+	log.Printf("Leads convertidos para JSON com sucesso. Tamanho do payload: %d bytes", len(jsonData))
+
+	apiURL := "http://api:8085/save-leads"
+	log.Printf("Enviando requisição POST para %s", apiURL)
+
+	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("Erro ao enviar requisição para a API: %v", err)
+		return fmt.Errorf("erro ao enviar requisição para a API: %v", err)
+	}
+	defer resp.Body.Close()
+
+	log.Printf("Resposta recebida da API com status: %d", resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Falha no envio: API retornou status %d", resp.StatusCode)
+		return fmt.Errorf("API retornou status %d", resp.StatusCode)
+	}
+
+	log.Println("Leads enviados com sucesso para a API")
+	return nil
 }

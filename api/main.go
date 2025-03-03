@@ -1,3 +1,5 @@
+// /api/main.go
+
 package main
 
 import (
@@ -26,10 +28,17 @@ func main() {
 	if err := db.Connect(); err != nil {
 		log.Fatalf("Erro ao conectar ao banco de dados: %v", err)
 	}
+
+	if err := db.Migrate(); err != nil {
+		log.Fatalf("Erro ao migrar o banco de dados: %v", err)
+	}
 	defer db.Close()
 
 	http.HandleFunc("/save-leads", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Endpoint /save-leads acessado de %s usando o método %s", r.RemoteAddr, r.Method)
+
 		if r.Method != http.MethodPost {
+			log.Printf("Método inválido %s. Apenas POST é permitido.", r.Method)
 			http.Error(w, "Método não permitido. Use POST.", http.StatusMethodNotAllowed)
 			return
 		}
@@ -38,20 +47,25 @@ func main() {
 		var leadsData []map[string]interface{}
 		err := json.NewDecoder(r.Body).Decode(&leadsData)
 		if err != nil {
+			log.Printf("Erro ao decodificar JSON: %v", err)
 			http.Error(w, "JSON inválido", http.StatusBadRequest)
 			return
 		}
+		log.Printf("Recebidos %d leads para salvar", len(leadsData))
 
 		// Itera sobre cada lead recebido e tenta salvar
-		for _, data := range leadsData {
+		for i, data := range leadsData {
+			log.Printf("Processando lead #%d: %+v", i+1, data)
 			err = saveLead(data)
 			if err != nil {
-				log.Printf("Erro ao salvar lead: %v", err)
+				log.Printf("Erro ao salvar lead #%d: %v", i+1, err)
 				http.Error(w, fmt.Sprintf("Falha ao salvar um lead: %v", err), http.StatusInternalServerError)
 				return
 			}
+			log.Printf("Lead #%d salvo com sucesso", i+1)
 		}
 
+		log.Println("Todos os leads foram salvos com sucesso!")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Leads salvos com sucesso!"))
 	})

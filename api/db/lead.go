@@ -1,3 +1,5 @@
+// /api/db/lead.go
+
 package db
 
 import (
@@ -12,7 +14,8 @@ import (
 )
 
 type Lead struct {
-	ID             uuid.UUID    `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+
 	BusinessName   string       `gorm:"size:255"`
 	RegisteredName string       `gorm:"size:255"`
 	FoundationDate sql.NullTime `gorm:"type:date"`
