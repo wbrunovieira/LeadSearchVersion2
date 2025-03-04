@@ -9,11 +9,13 @@ interface Lead {
 function App() {
   const [categoryID, setCategoryID] =
     useState<string>('padaria');
-  const [zipcodeID, setZipcodeID] =
-    useState<string>('01001000');
+  const [zipcodeID, setZipcodeID] = useState<string>('');
   const [radius, setRadius] = useState<number>(3000);
   const [maxResults, setMaxResults] = useState<number>(5);
   const [message, setMessage] = useState<string>('');
+  const [messageType, setMessageType] = useState<
+    'success' | 'error' | ''
+  >('');
   const [leads, setLeads] = useState<Lead[]>([]);
 
   const BACKEND_URL_Search_GOOGLE =
@@ -22,17 +24,27 @@ function App() {
 
   const handleStartSearch = async () => {
     try {
+      setMessage('Iniciando busca...');
+      setMessageType('');
+
       const url = `${BACKEND_URL_Search_GOOGLE}/start-search?category_id=${categoryID}&zipcode_id=${zipcodeID}&radius=${radius}&max_results=${maxResults}`;
       const response = await fetch(url);
+
       if (response.ok) {
         const text = await response.text();
-        setMessage(text);
+        setMessage(`Busca concluída com sucesso! ${text}`);
+        setMessageType('success');
+
+        // Atualizar a lista de leads automaticamente após busca bem-sucedida
+        handleGetLeads();
       } else {
         setMessage('Erro ao iniciar a busca');
+        setMessageType('error');
       }
     } catch (error) {
       console.error(error);
       setMessage('Erro de conexão com o backend');
+      setMessageType('error');
     }
   };
 
@@ -47,10 +59,12 @@ function App() {
         setLeads(data);
       } else {
         setMessage('Erro ao buscar leads');
+        setMessageType('error');
       }
     } catch (error) {
       console.error(error);
       setMessage('Erro de conexão ao buscar leads');
+      setMessageType('error');
     }
   };
 
@@ -117,9 +131,25 @@ function App() {
         Iniciar Busca
       </button>
 
-      <p className="my-4 p-2 bg-blue-50 text-blue-800 rounded-md">
-        {message}
-      </p>
+      {message && (
+        <div
+          className={`my-4 p-3 rounded-md ${
+            messageType === 'success'
+              ? 'bg-green-50 text-green-800 border border-green-300'
+              : messageType === 'error'
+              ? 'bg-red-50 text-red-800 border border-red-300'
+              : 'bg-blue-50 text-blue-800 border border-blue-300'
+          }`}
+        >
+          {messageType === 'success' && (
+            <span className="inline-block mr-2">✅</span>
+          )}
+          {messageType === 'error' && (
+            <span className="inline-block mr-2">❌</span>
+          )}
+          {message}
+        </div>
+      )}
 
       <hr className="my-8 border-gray-300" />
 
