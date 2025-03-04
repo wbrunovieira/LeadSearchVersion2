@@ -55,51 +55,84 @@ function App() {
   };
 
   return (
-    <div style={{ padding: '1rem' }}>
-      <h1>Buscar Leads no Google Places</h1>
-      <div style={{ marginBottom: '1rem' }}>
-        <label>Category ID:&nbsp;</label>
+    <div className="bg-slate-100 text-black p-4 max-w-4xl mx-auto my-8 rounded-lg shadow-md">
+      <h1 className="text-3xl font-bold text-blue-600 mb-6">
+        Buscar Leads no Google Places
+      </h1>
+
+      <div className="mb-4 bg-white p-4 rounded-md">
+        <label className="block text-gray-700 font-medium mb-2">
+          Category ID:
+        </label>
         <input
           type="text"
           value={categoryID}
           onChange={e => setCategoryID(e.target.value)}
+          className="w-full p-2 border border-gray-300 rounded text-black"
         />
       </div>
-      <div style={{ marginBottom: '1rem' }}>
-        <label>Zipcode ID:&nbsp;</label>
+
+      <div className="mb-4 bg-white p-4 rounded-md">
+        <label className="block text-gray-700 font-medium mb-2">
+          Zipcode ID:
+        </label>
         <input
           type="text"
           value={zipcodeID}
           onChange={e => setZipcodeID(e.target.value)}
+          className="w-full p-2 border border-gray-300 rounded text-black"
         />
       </div>
-      <div style={{ marginBottom: '1rem' }}>
-        <label>Radius (m):&nbsp;</label>
+
+      <div className="mb-4 bg-white p-4 rounded-md">
+        <label className="block text-gray-700 font-medium mb-2">
+          Radius (m):
+        </label>
         <input
           type="number"
           value={radius}
           onChange={e => setRadius(Number(e.target.value))}
+          className="w-full p-2 border border-gray-300 rounded text-black"
         />
       </div>
-      <div style={{ marginBottom: '1rem' }}>
-        <label>Max Results:&nbsp;</label>
+
+      <div className="mb-4 bg-white p-4 rounded-md">
+        <label className="block text-gray-700 font-medium mb-2">
+          Max Results:
+        </label>
         <input
           type="number"
           value={maxResults}
           onChange={e =>
             setMaxResults(Number(e.target.value))
           }
+          className="w-full p-2 border border-gray-300 rounded text-black"
         />
       </div>
 
-      <button onClick={handleStartSearch}>
+      <button
+        onClick={handleStartSearch}
+        className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-6 rounded-md font-semibold"
+      >
         Iniciar Busca
       </button>
-      <p>{message}</p>
 
-      <hr />
-      <h2>Leads Salvos</h2>
-      <button onClick={handleGetLeads}>Listar Leads</button>
+      <p className="my-4 p-2 bg-blue-50 text-blue-800 rounded-md">
+        {message}
+      </p>
+
+      <hr className="my-8 border-gray-300" />
+
+      <h2 className="text-2xl font-bold text-blue-600 mb-4">
+        Leads Salvos
+      </h2>
+
+      <button
+        onClick={handleGetLeads}
+        className="bg-green-500 hover:bg-green-600 text-white py-2 px-6 rounded-md font-semibold mb-4"
+      >
+        Listar Leads
+      </button>
 
       <LeadList leads={leads} />
     </div>
