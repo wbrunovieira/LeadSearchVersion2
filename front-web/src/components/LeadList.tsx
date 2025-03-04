@@ -1,8 +1,6 @@
 // /src/components/LeadList.tsx
 import React from 'react';
 
-// Definindo uma interface genérica para o lead,
-// considerando que ele pode ter várias propriedades.
 interface Lead {
   [key: string]: any;
 }

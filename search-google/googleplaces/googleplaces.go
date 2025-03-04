@@ -191,17 +191,21 @@ func saveToken(queryKey string, token string, pagesFetched int, leadsExtracted i
 	return nil
 }
 
-func (s *Service) SearchPlaces(query string, location string, radius int, maxPages int) ([]map[string]interface{}, error) {
+func (s *Service) SearchPlaces(query string, location string, radius int, maxPages int, maxResults int) ([]map[string]interface{}, error) {
+	log.Printf("Iniciando busca de lugares para query: '%s', location: '%s', radius: %d e maxPages: %d", query, location, radius, maxPages)
 	client := resty.New()
 	url := "https://maps.googleapis.com/maps/api/place/textsearch/json"
 
 	var allPlaces []map[string]interface{}
 	queryKey := generateQueryKey(query, location, radius)
+	log.Printf("QueryKey gerado: %s", queryKey)
 
 	pageToken, pagesFetched, leadsExtracted, err := loadToken(queryKey)
 	if err != nil {
+		log.Printf("Erro ao carregar next_page_token: %v", err)
 		return nil, fmt.Errorf("erro ao carregar next_page_token: %v", err)
 	}
+	log.Printf("Token carregado: %s, páginas já buscadas: %d, leads extraídos: %d", pageToken, pagesFetched, leadsExtracted)
 
 	for {
 		params := map[string]string{
@@ -212,15 +216,19 @@ func (s *Service) SearchPlaces(query string, location string, radius int, maxPag
 		}
 		if pageToken != "" {
 			params["pagetoken"] = pageToken
+			log.Printf("Usando pagetoken: %s", pageToken)
 		}
 
+		log.Printf("Enviando requisição para URL: %s com parâmetros: %+v", url, params)
 		resp, err := client.R().
 			SetQueryParams(params).
 			Get(url)
 
 		if err != nil {
+			log.Printf("Erro na conexão com a API Google Places: %v", err)
 			return nil, fmt.Errorf("error connecting to Google Places API: %v", err)
 		}
+		log.Printf("Resposta recebida com status: %s", resp.Status())
 
 		if resp.IsSuccess() {
 			var result struct {
@@ -232,13 +240,16 @@ func (s *Service) SearchPlaces(query string, location string, radius int, maxPag
 
 			err := json.Unmarshal(resp.Body(), &result)
 			if err != nil {
+				log.Printf("Erro ao fazer parse da resposta: %v", err)
 				return nil, fmt.Errorf("error parsing response: %v", err)
 			}
+			log.Printf("Status da API: %s", result.Status)
 
 			if result.Status == "ZERO_RESULTS" {
 				log.Printf("Nenhum resultado encontrado para a consulta: %s", query)
 				break
 			} else if result.Status != "OK" {
+				log.Printf("Erro retornado pela API: %s, mensagem: %s", result.Status, result.ErrorMessage)
 				return nil, fmt.Errorf("API error: %s, message: %s", result.Status, result.ErrorMessage)
 			}
 
@@ -257,41 +268,55 @@ func (s *Service) SearchPlaces(query string, location string, radius int, maxPag
 				}
 				allPlaces = append(allPlaces, placeDetails)
 				leadsExtracted++
+				log.Printf("Lead extraído: %+v", placeDetails)
 
-				if len(allPlaces) >= 1 {
-					log.Println("Apenas uma empresa foi obtida. Interrompendo a busca.")
+				if len(allPlaces) >= maxResults {
+					log.Println("Número máximo de resultados obtido. Interrompendo a busca.")
 					break
 				}
 			}
 
-			if len(allPlaces) >= 1 || result.NextPageToken == "" || pagesFetched >= maxPages {
+			// Se já atingiu o número desejado de resultados ou não houver mais token para próxima página, interrompe
+			if len(allPlaces) >= maxPages || result.NextPageToken == "" || pagesFetched >= maxPages {
+				log.Printf("Critério de término atingido: resultados obtidos = %d, nextPageToken vazio = %t, páginas buscadas = %d", len(allPlaces), result.NextPageToken == "", pagesFetched)
 				break
 			}
 
 			pagesFetched++
-			log.Printf("Página %d obtida, total de resultados até agora: %d", pagesFetched, leadsExtracted)
+			log.Printf("Página %d obtida, total de leads extraídos até agora: %d", pagesFetched, leadsExtracted)
 
-			saveToken(queryKey, result.NextPageToken, pagesFetched, leadsExtracted)
+			err = saveToken(queryKey, result.NextPageToken, pagesFetched, leadsExtracted)
+			if err != nil {
+				log.Printf("Erro ao salvar token: %v", err)
+			} else {
+				log.Printf("Token salvo com sucesso: %s", result.NextPageToken)
+			}
 
 			if result.NextPageToken == "" || pagesFetched >= maxPages {
+				log.Println("Nenhuma próxima página ou limite de páginas atingido. Encerrando busca.")
 				break
 			}
 
 			pageToken = result.NextPageToken
+			log.Printf("Atualizando pagetoken para próxima requisição: %s", pageToken)
 			time.Sleep(2 * time.Second)
 		} else {
+			log.Printf("Falha na requisição: %v", resp.Status())
 			return nil, fmt.Errorf("failed to get data: %v", resp.Status())
 		}
 	}
 
-	log.Printf("Total de resultados obtidos: %d", leadsExtracted)
+	log.Printf("Busca finalizada. Total de resultados obtidos: %d", leadsExtracted)
 	return allPlaces, nil
 }
 
 func (s *Service) GetPlaceDetails(placeID string) (map[string]interface{}, error) {
+	log.Printf("Iniciando busca dos detalhes do lugar para PlaceID: %s", placeID)
 	client := resty.New()
 
 	url := "https://maps.googleapis.com/maps/api/place/details/json"
+	log.Printf("Chamada à URL: %s com os parâmetros: place_id=%s, fields=name,formatted_address,international_phone_number,website,rating,address_components,editorial_summary", url, placeID)
+
 	resp, err := client.R().
 		SetQueryParams(map[string]string{
 			"place_id": placeID,
@@ -301,8 +326,11 @@ func (s *Service) GetPlaceDetails(placeID string) (map[string]interface{}, error
 		Get(url)
 
 	if err != nil {
+		log.Printf("Erro ao conectar com a API Google Places Details: %v", err)
 		return nil, fmt.Errorf("error connecting to Google Places Details API: %v", err)
 	}
+
+	log.Printf("Resposta recebida com status: %s", resp.Status())
 
 	if resp.IsSuccess() {
 		var result struct {
@@ -327,16 +355,22 @@ func (s *Service) GetPlaceDetails(placeID string) (map[string]interface{}, error
 
 		err := json.Unmarshal(resp.Body(), &result)
 		if err != nil {
+			log.Printf("Erro ao fazer parse da resposta da API: %v", err)
 			return nil, fmt.Errorf("error parsing place details response: %v", err)
 		}
 
+		log.Printf("API retornou status: %s", result.Status)
 		if result.Status != "OK" {
+			log.Printf("Erro da API: %s, mensagem: %s", result.Status, result.ErrorMessage)
 			return nil, fmt.Errorf("error from API: %s, message: %s", result.Status, result.ErrorMessage)
 		}
 
+		// Processamento dos componentes do endereço
 		var city, state, zipCode, country, route, neighborhood, streetNumber string
 		for _, component := range result.Result.AddressComponents {
+			log.Printf("Processando componente de endereço: %+v", component)
 			for _, ctype := range component.Types {
+				log.Printf("Tipo encontrado: %s para o componente: %s", ctype, component.LongName)
 				switch ctype {
 				case "locality":
 					city = component.LongName
@@ -354,7 +388,6 @@ func (s *Service) GetPlaceDetails(placeID string) (map[string]interface{}, error
 					if neighborhood == "" {
 						neighborhood = component.LongName
 					}
-
 				}
 			}
 		}
@@ -370,6 +403,7 @@ func (s *Service) GetPlaceDetails(placeID string) (map[string]interface{}, error
 			addressParts = append(addressParts, neighborhood)
 		}
 		address := strings.Join(addressParts, ", ")
+		log.Printf("Componentes do endereço: %v. Endereço formatado: %s", addressParts, address)
 
 		var description string
 		if result.Result.EditorialSummary.Overview != "" {
@@ -377,10 +411,9 @@ func (s *Service) GetPlaceDetails(placeID string) (map[string]interface{}, error
 		} else {
 			description = "(Google Places: No description available)"
 		}
+		log.Printf("Descrição final definida: %s", description)
 
-		log.Printf("Address components included: %v", addressParts)
-
-		return map[string]interface{}{
+		details := map[string]interface{}{
 			"Name":                     result.Result.Name,
 			"FormattedAddress":         address,
 			"InternationalPhoneNumber": result.Result.InternationalPhoneNumber,
@@ -392,8 +425,11 @@ func (s *Service) GetPlaceDetails(placeID string) (map[string]interface{}, error
 			"Country":                  country,
 			"PlaceID":                  placeID,
 			"Description":              description,
-		}, nil
+		}
+		log.Printf("Detalhes do lugar obtidos: %+v", details)
+		return details, nil
 	}
 
+	log.Printf("Falha ao obter detalhes do lugar, status da resposta: %v", resp.Status())
 	return nil, fmt.Errorf("failed to get place details: %v", resp.Status())
 }

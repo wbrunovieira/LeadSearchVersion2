@@ -68,20 +68,19 @@ func CreateLead(lead *Lead) error {
 
 	result := DB.Where("google_id = ?", lead.GoogleId).First(&existingLead)
 	if result.Error == nil {
-		return fmt.Errorf("Lead com GoogleId %s já existe", lead.GoogleId)
+		log.Printf("Lead com GoogleId %s já existe. Ignorando inserção.", lead.GoogleId)
+		return nil
 	}
 
 	if result.Error != nil && result.Error != gorm.ErrRecordNotFound {
-
-		return fmt.Errorf("Erro ao verificar se o lead já existe: %v", result.Error)
+		return fmt.Errorf("erro ao verificar se o lead já existe: %v", result.Error)
 	}
 
 	result = DB.Create(lead)
 	if result.Error != nil {
-		return fmt.Errorf("Failed to save lead to database: %v", result.Error)
+		return fmt.Errorf("falha ao salvar lead no banco de dados: %v", result.Error)
 	}
-	log.Printf("Salvando lead no  funcao CreateLead PostgreSQL: Nome=%s, WhatsApp=%s", lead.BusinessName, lead.Whatsapp)
-
+	log.Printf("Lead salvo com sucesso: Nome=%s, WhatsApp=%s", lead.BusinessName, lead.Whatsapp)
 	return nil
 }
 

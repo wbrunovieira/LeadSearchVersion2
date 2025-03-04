@@ -113,7 +113,7 @@ func startSearch(apiKey string, categoryID string, zipcodeID, radius, maxResults
 	log.Printf("Localização obtida para o CEP %s: %s", zipcodeString, locationStr)
 
 	maxPages := 3
-	places, err := service.SearchPlaces(categoryID, locationStr, radius, maxPages)
+	places, err := service.SearchPlaces(categoryID, locationStr, radius, maxPages, maxResults)
 	if err != nil {
 		return fmt.Errorf("erro ao buscar lugares: %v", err)
 	}
