@@ -1,3 +1,4 @@
+// /api/main.go
 package main
 
 import (
@@ -136,6 +137,17 @@ func saveLead(placeDetails map[string]interface{}) error {
 	if v, ok := placeDetails["Country"].(string); ok {
 		lead.Country = v
 	}
+
+	if v, ok := placeDetails["Radius"].(float64); ok {
+		lead.Radius = int(v)
+	} else if v, ok := placeDetails["Radius"].(int); ok {
+		lead.Radius = v
+	}
+
+	if v, ok := placeDetails["Category"].(string); ok {
+		lead.Category = v
+	}
+
 	if v, ok := placeDetails["InternationalPhoneNumber"].(string); ok {
 		log.Printf("Verificando WhatsApp para o telefone: %s", v)
 		lead.Phone = v

@@ -27,9 +27,15 @@ function App() {
       setMessage('Iniciando busca...');
       setMessageType('');
 
-      const url = `${BACKEND_URL_Search_GOOGLE}/start-search?category_id=${categoryID}&zipcode_id=${zipcodeID}&radius=${radius}&max_results=${maxResults}`;
+      const normalizedZipcode = zipcodeID.replace(
+        /\D/g,
+        ''
+      );
+      const url = `${BACKEND_URL_Search_GOOGLE}/start-search?category_id=${categoryID}&zipcode_id=${normalizedZipcode}&radius=${radius}&max_results=${maxResults}`;
       const response = await fetch(url);
       console.log('url', url);
+      console.log('zipcodeID', zipcodeID);
+      console.log('normalizedZipcode', normalizedZipcode);
 
       if (response.ok) {
         const text = await response.text();

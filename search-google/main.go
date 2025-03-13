@@ -133,6 +133,11 @@ func startSearch(apiKey string, categoryID string, zipcodeID, radius, maxResults
 			log.Printf("Erro ao obter detalhes do place: %v", err)
 			continue
 		}
+
+		// Incluindo a categoria e o raio no payload do lead
+		details["Category"] = categoryID
+		details["Radius"] = radius
+
 		totalLeadsExtracted++
 		log.Printf("Lead #%d obtido: %+v", totalLeadsExtracted, details)
 		leads = append(leads, details)

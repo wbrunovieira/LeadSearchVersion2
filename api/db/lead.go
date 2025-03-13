@@ -59,6 +59,9 @@ type Lead struct {
 	FieldsFilled int    `gorm:"default:0"`
 	GoogleId     string `gorm:"type:text"`
 
+	Category string `gorm:"type:text"` // categoria enviada pelo frontend
+	Radius   int    `gorm:"default:0"` // raio utilizado na busca
+
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }
