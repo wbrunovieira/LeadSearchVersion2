@@ -1,14 +1,14 @@
-// /src/App.tsx
+// src/App.tsx
 import { useState } from 'react';
 import LeadList from './components/LeadList';
+import { categories } from './utils/categories';
 
 interface Lead {
   [key: string]: any;
 }
 
 function App() {
-  const [categoryID, setCategoryID] =
-    useState<string>('padaria');
+  const [categoryID, setCategoryID] = useState<string>('');
   const [zipcodeID, setZipcodeID] = useState<string>('');
   const [radius, setRadius] = useState<number>(3000);
   const [maxResults, setMaxResults] = useState<number>(5);
@@ -29,13 +29,12 @@ function App() {
 
       const url = `${BACKEND_URL_Search_GOOGLE}/start-search?category_id=${categoryID}&zipcode_id=${zipcodeID}&radius=${radius}&max_results=${maxResults}`;
       const response = await fetch(url);
+      console.log('url', url);
 
       if (response.ok) {
         const text = await response.text();
         setMessage(`Busca concluída com sucesso! ${text}`);
         setMessageType('success');
-
-        // Atualizar a lista de leads automaticamente após busca bem-sucedida
         handleGetLeads();
       } else {
         setMessage('Erro ao iniciar a busca');
@@ -74,18 +73,26 @@ function App() {
         Buscar Leads no Google Places
       </h1>
 
+      {/* Campo de seleção para categoria */}
       <div className="mb-4 bg-white p-4 rounded-md">
         <label className="block text-gray-700 font-medium mb-2">
-          Category ID:
+          Categoria:
         </label>
-        <input
-          type="text"
+        <select
           value={categoryID}
           onChange={e => setCategoryID(e.target.value)}
           className="w-full p-2 border border-gray-300 rounded text-black"
-        />
+        >
+          <option value="">Selecione uma categoria</option>
+          {categories.map(cat => (
+            <option key={cat} value={cat}>
+              {cat}
+            </option>
+          ))}
+        </select>
       </div>
 
+      {/* Campo para Zipcode */}
       <div className="mb-4 bg-white p-4 rounded-md">
         <label className="block text-gray-700 font-medium mb-2">
           Zipcode ID:
@@ -98,6 +105,7 @@ function App() {
         />
       </div>
 
+      {/* Campo para Radius */}
       <div className="mb-4 bg-white p-4 rounded-md">
         <label className="block text-gray-700 font-medium mb-2">
           Radius (m):
@@ -110,6 +118,7 @@ function App() {
         />
       </div>
 
+      {/* Campo para Max Results */}
       <div className="mb-4 bg-white p-4 rounded-md">
         <label className="block text-gray-700 font-medium mb-2">
           Max Results:
