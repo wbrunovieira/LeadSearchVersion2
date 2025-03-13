@@ -93,6 +93,22 @@ services:
         tag: "{{.Name}}/{{.ID}}"
         labels: "service={{.Name}}"
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"    # Porta para conexões AMQP
+      - "15672:15672"  # Porta para interface de gerenciamento
+    networks:
+      - leads-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.Name}}/{{.ID}}"
+        labels: "service={{.Name}}"
+
 networks:
   leads-network:
     driver: bridge
