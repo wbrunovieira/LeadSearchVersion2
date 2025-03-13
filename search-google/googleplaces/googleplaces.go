@@ -374,6 +374,11 @@ func (s *Service) GetPlaceDetails(placeID string) (map[string]interface{}, error
 				switch ctype {
 				case "locality":
 					city = component.LongName
+				case "administrative_area_level_2":
+					// Fallback: se city ainda estiver vazia, usa o valor de administrative_area_level_2
+					if city == "" {
+						city = component.LongName
+					}
 				case "administrative_area_level_1":
 					state = component.ShortName
 				case "postal_code":
@@ -384,7 +389,7 @@ func (s *Service) GetPlaceDetails(placeID string) (map[string]interface{}, error
 					streetNumber = component.LongName
 				case "route":
 					route = component.LongName
-				case "neighborhood", "sublocality", "sublocality_level_1", "sublocality_level_2", "administrative_area_level_2":
+				case "neighborhood", "sublocality", "sublocality_level_1", "sublocality_level_2":
 					if neighborhood == "" {
 						neighborhood = component.LongName
 					}

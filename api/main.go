@@ -207,6 +207,7 @@ func saveLead(placeDetails map[string]interface{}) error {
 	}
 
 	lead.Source = "GooglePlaces"
+	log.Printf("lead a enviar no banco de dados: %v", &lead)
 
 	err := db.CreateLead(&lead)
 	if err != nil {
