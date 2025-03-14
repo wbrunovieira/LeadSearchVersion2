@@ -3,6 +3,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +20,21 @@ var (
 	rabbitConn *amqp.Connection
 	rabbitCh   *amqp.Channel
 )
+
+type CombinedLeadData struct {
+	Lead       common.Lead            `json:"lead"`
+	TavilyData *tavily.TavilyResponse `json:"tavily_data,omitempty"`
+	// Você pode também incluir os campos extraídos de Tavily se preferir:
+	TavilyExtra struct {
+		CNPJ    string `json:"cnpj,omitempty"`
+		Phone   string `json:"phone,omitempty"`
+		Owner   string `json:"owner,omitempty"`
+		Email   string `json:"email,omitempty"`
+		Website string `json:"website,omitempty"`
+	} `json:"tavily_extra,omitempty"`
+	SerperData map[string]interface{} `json:"serper_data,omitempty"`
+	CNPJData   map[string]interface{} `json:"cnpj_data,omitempty"`
+}
 
 func initRabbitMQ() {
 	rabbitURL := os.Getenv("RABBITMQ_URL")
@@ -95,7 +111,6 @@ func processLeadMessage(body []byte) {
 	if lead.State != "" {
 		query += " " + lead.State
 	}
-	// Se o lead for brasileiro, adiciona "CNPJ" à query.
 	if lead.Country == "Brazil" || lead.Country == "Brasil" {
 		query += " CNPJ"
 	}
@@ -103,40 +118,79 @@ func processLeadMessage(body []byte) {
 	log.Printf("Query enviada para o Tavily: %s", query)
 
 	// Chamada à API Tavily para enriquecimento.
+	var combinedData CombinedLeadData
+	combinedData.Lead = lead
+
 	enrichedData, err := tavily.EnrichLead(query)
 	if err != nil {
 		log.Printf("Erro ao enriquecer o lead com Tavily: %v", err)
-		// Você pode optar por continuar mesmo sem os dados do Tavily.
 	} else {
 		log.Printf("Resposta bruta da API Tavily: %+v", enrichedData)
-		// Extrai os dados do Tavily.
+		combinedData.TavilyData = enrichedData
+
+		// Extraindo campos específicos, se desejado:
 		cnpjTavily, phone, owner, email, website := tavily.ExtractLeadInfo(enrichedData)
+		combinedData.TavilyExtra.CNPJ = cnpjTavily
+		combinedData.TavilyExtra.Phone = phone
+		combinedData.TavilyExtra.Owner = owner
+		combinedData.TavilyExtra.Email = email
+		combinedData.TavilyExtra.Website = website
+
 		log.Printf("Dados do Tavily - CNPJ: %s, Phone: %s, Owner: %s, Email: %s, Website: %s",
 			cnpjTavily, phone, owner, email, website)
 	}
 
+	// Chamada à API Serper para capturar CNPJs.
 	serperResult, err := serper.FetchSerperDataForCNPJ(lead.BusinessName, lead.City)
 	if err != nil {
 		log.Printf("Erro na chamada à API Serper: %v", err)
 	} else {
 		log.Printf("Dados da API Serper: %+v", serperResult)
+		combinedData.SerperData = serperResult
 
+		// Se foram capturados CNPJs, consulta os dados detalhados via API Invertexto.
 		if capturedIface, ok := serperResult["captured_cnpjs"]; ok {
-
 			if cnpjs, ok := capturedIface.([]string); ok && len(cnpjs) > 0 {
-
 				cnpjData, err := cnpj.FetchCNPJData(cnpjs[0])
 				if err != nil {
 					log.Printf("Erro ao consultar dados do CNPJ %s: %v", cnpjs[0], err)
 				} else {
 					log.Printf("Dados detalhados do CNPJ %s: %+v", cnpjs[0], cnpjData)
+					combinedData.CNPJData = cnpjData
 				}
 			}
 		}
 	}
 
-	// Aqui você pode combinar os dados de Tavily, Serper e Invertexto e enviá-los para o RabbitMQ,
-	// se necessário, em um objeto estruturado para processamento posterior.
+	// Publica os dados combinados em uma fila RabbitMQ.
+	if err := PublishCombinedLead(combinedData); err != nil {
+		log.Printf("Erro ao publicar dados combinados no RabbitMQ: %v", err)
+	} else {
+		log.Printf("Dados combinados publicados com sucesso para o lead ID: %s", lead.ID)
+	}
+}
+
+func PublishCombinedLead(data CombinedLeadData) error {
+	// Converte para JSON
+	body, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("erro ao converter dados combinados para JSON: %v", err)
+	}
+	// Publica na fila "combined_leads_queue"
+	err = rabbitCh.Publish(
+		"",                     // Usando a default exchange
+		"combined_leads_queue", // nome da fila
+		false,                  // mandatory
+		false,                  // immediate
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        body,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("erro ao publicar dados combinados: %v", err)
+	}
+	return nil
 }
 
 func main() {
