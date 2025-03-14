@@ -115,17 +115,16 @@ func processLeadMessage(body []byte) {
 			cnpjTavily, phone, owner, email, website)
 	}
 
-	// Chamada à API Serper para capturar CNPJs.
 	serperResult, err := serper.FetchSerperDataForCNPJ(lead.BusinessName, lead.City)
 	if err != nil {
 		log.Printf("Erro na chamada à API Serper: %v", err)
 	} else {
 		log.Printf("Dados da API Serper: %+v", serperResult)
-		// Se foram capturados CNPJs, consulta os dados detalhados via API Invertexto.
+
 		if capturedIface, ok := serperResult["captured_cnpjs"]; ok {
-			// Aqui assumimos que os CNPJs são retornados como []string.
+
 			if cnpjs, ok := capturedIface.([]string); ok && len(cnpjs) > 0 {
-				// Consulta o primeiro CNPJ encontrado.
+
 				cnpjData, err := cnpj.FetchCNPJData(cnpjs[0])
 				if err != nil {
 					log.Printf("Erro ao consultar dados do CNPJ %s: %v", cnpjs[0], err)

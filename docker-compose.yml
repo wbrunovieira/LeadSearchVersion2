@@ -1,3 +1,4 @@
+
 services:
   search-google:
     build: ./search-google
@@ -105,8 +106,8 @@ services:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"    # Porta para conexões AMQP
-      - "15672:15672"  # Porta para interface de gerenciamento
+      - "5672:5672"
+      - "15672:15672"
     networks:
       - leads-network
     healthcheck:
@@ -122,9 +123,50 @@ services:
         tag: "{{.Name}}/{{.ID}}"
         labels: "service={{.Name}}"
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - leads-network
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  datalake:
+    build: ./datalake
+    container_name: datalake
+    environment:
+      - PORT=8087
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    networks:
+      - leads-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "8087:8087"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.Name}}/{{.ID}}"
+        labels: "service=datalake"
+
 networks:
   leads-network:
     driver: bridge
 
 volumes:
   db_data:
+  es_data:
