@@ -63,8 +63,11 @@ services:
       - DB_PASSWORD=secret_password
       - DB_NAME=leads_db
       - PORT=8085
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     depends_on:
       db-leads:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - leads-network
@@ -80,8 +83,13 @@ services:
     build: ./data-collector
     ports:
       - "8086:8086"
+    environment:
+      - PORT=8086
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     depends_on:
       db-leads:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - leads-network
@@ -101,6 +109,11 @@ services:
       - "15672:15672"  # Porta para interface de gerenciamento
     networks:
       - leads-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
     logging:
       driver: "json-file"
       options:
