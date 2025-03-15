@@ -276,7 +276,6 @@ func (s *Service) SearchPlaces(query string, location string, radius int, maxPag
 				}
 			}
 
-			// Se já atingiu o número desejado de resultados ou não houver mais token para próxima página, interrompe
 			if len(allPlaces) >= maxPages || result.NextPageToken == "" || pagesFetched >= maxPages {
 				log.Printf("Critério de término atingido: resultados obtidos = %d, nextPageToken vazio = %t, páginas buscadas = %d", len(allPlaces), result.NextPageToken == "", pagesFetched)
 				break
@@ -365,7 +364,6 @@ func (s *Service) GetPlaceDetails(placeID string) (map[string]interface{}, error
 			return nil, fmt.Errorf("error from API: %s, message: %s", result.Status, result.ErrorMessage)
 		}
 
-		// Processamento dos componentes do endereço
 		var city, state, zipCode, country, route, neighborhood, streetNumber string
 		for _, component := range result.Result.AddressComponents {
 			log.Printf("Processando componente de endereço: %+v", component)
@@ -375,7 +373,7 @@ func (s *Service) GetPlaceDetails(placeID string) (map[string]interface{}, error
 				case "locality":
 					city = component.LongName
 				case "administrative_area_level_2":
-					// Fallback: se city ainda estiver vazia, usa o valor de administrative_area_level_2
+
 					if city == "" {
 						city = component.LongName
 					}

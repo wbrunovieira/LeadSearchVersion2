@@ -30,9 +30,13 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/start-search", startSearchHandler)
+	mux.HandleFunc("/start-search", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Requisição em /start-search: Método=%s, Query=%s", r.Method, r.URL.RawQuery)
+		startSearchHandler(w, r)
+	})
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("health hit")
 		if r.Method != http.MethodGet {
 			http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 			return
@@ -48,54 +52,71 @@ func main() {
 }
 
 func startSearchHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("startSearchHandler: Requisição recebida")
+
 	if r.Method != http.MethodGet {
+		log.Printf("startSearchHandler: Método inválido: %s", r.Method)
 		http.Error(w, "Método não permitido. Use GET.", http.StatusMethodNotAllowed)
 		return
 	}
+	log.Println("startSearchHandler: Método GET confirmado")
 
 	categoryID := r.URL.Query().Get("category_id")
 	zipcodeIDString := r.URL.Query().Get("zipcode_id")
 	radiusStr := r.URL.Query().Get("radius")
 	maxResultsStr := r.URL.Query().Get("max_results")
 
+	log.Printf("startSearchHandler: Parâmetros recebidos - category_id=%s, zipcode_id=%s, radius=%s, max_results=%s", categoryID, zipcodeIDString, radiusStr, maxResultsStr)
+
 	if categoryID == "" || zipcodeIDString == "" || radiusStr == "" {
+		log.Println("startSearchHandler: Parâmetros obrigatórios faltando")
 		http.Error(w, "Missing required parameters (category_id, zipcode_id, radius)", http.StatusBadRequest)
 		return
 	}
 
 	radiusInt, err := strconv.Atoi(radiusStr)
 	if err != nil {
+		log.Printf("startSearchHandler: Valor de radius inválido: %s", radiusStr)
 		http.Error(w, "Invalid radius value", http.StatusBadRequest)
 		return
 	}
+	log.Printf("startSearchHandler: Radius convertido com sucesso: %d", radiusInt)
 
 	zipcodeID, err := strconv.Atoi(zipcodeIDString)
 	if err != nil {
+		log.Printf("startSearchHandler: Valor de zipcode_id inválido: %s", zipcodeIDString)
 		http.Error(w, "Invalid zipcode_id value", http.StatusBadRequest)
 		return
 	}
+	log.Printf("startSearchHandler: zipcodeID convertido com sucesso: %d", zipcodeID)
 
-	maxResults := 1 // valor padrão
+	maxResults := 1
 	if maxResultsStr != "" {
 		maxResults, err = strconv.Atoi(maxResultsStr)
 		if err != nil {
+			log.Printf("startSearchHandler: Valor de max_results inválido: %s", maxResultsStr)
 			http.Error(w, "Invalid max_results value", http.StatusBadRequest)
 			return
 		}
 	}
+	log.Printf("startSearchHandler: maxResults definido: %d", maxResults)
 
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	if apiKey == "" {
+		log.Println("startSearchHandler: API key não provida")
 		http.Error(w, "API key not provided", http.StatusInternalServerError)
 		return
 	}
+	log.Println("startSearchHandler: API key obtida")
 
 	err = startSearch(apiKey, categoryID, zipcodeID, radiusInt, maxResults)
 	if err != nil {
+		log.Printf("startSearchHandler: Erro ao iniciar pesquisa: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to start search: %v", err), http.StatusInternalServerError)
 		return
 	}
 
+	log.Println("startSearchHandler: Pesquisa iniciada com sucesso")
 	fmt.Fprintf(w, "Search started for categoryID: %s, zipcodeID: %d, radius: %d", categoryID, zipcodeID, radiusInt)
 }
 
@@ -134,7 +155,6 @@ func startSearch(apiKey string, categoryID string, zipcodeID, radius, maxResults
 			continue
 		}
 
-		// Incluindo a categoria e o raio no payload do lead
 		details["Category"] = categoryID
 		details["Radius"] = radius
 

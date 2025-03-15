@@ -1,17 +1,13 @@
-FROM golang:1.23-alpine
-
-
+# Stage 1: Build
+FROM golang:1.23-alpine AS builder
 WORKDIR /app
-
 COPY go.mod go.sum ./
-RUN go mod download && go mod verify
-
+RUN go mod download
 COPY . .
-RUN CGO_ENABLE=0 go build -o main .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o main .
 
-
-
-
-EXPOSE 8085
-
+# Stage 2: Runtime
+FROM alpine:latest
+WORKDIR /root/
+COPY --from=builder /app/main .
 CMD ["./main"]
