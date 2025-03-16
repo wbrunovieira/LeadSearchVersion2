@@ -198,6 +198,7 @@ func UpdateLeadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "JSON inválido", http.StatusBadRequest)
 		return
 	}
+	log.Printf("UpdateLeadHandler Body: %v", r.Body)
 
 	leadID, err := uuid.Parse(req.ID)
 	if err != nil {
@@ -266,3 +267,5 @@ func UpdateLeadHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Lead atualizado com sucesso"))
 }
+
+//alterado

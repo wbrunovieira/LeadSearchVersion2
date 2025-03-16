@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/streadway/amqp"
+	"github.com/wbrunovieira/LeadSearchVersion2/forwarder/helpers"
 	"github.com/wbrunovieira/LeadSearchVersion2/forwarder/olhama"
 	"github.com/wbrunovieira/LeadSearchVersion2/forwarder/types"
 )
@@ -75,7 +76,6 @@ func ConsumeQueue() {
 				continue
 			}
 
-			// Extração do ID do lead para futura atualização no banco de dados
 			leadID := ""
 			if leadMap, ok := data.Lead.(map[string]interface{}); ok {
 				if id, exists := leadMap["id"]; exists {
@@ -113,11 +113,42 @@ func ConsumeQueue() {
 			}
 
 			log.Printf("Bloco de Raciocínio: %s", olhamaResp.Think)
+
 			log.Printf("RegisteredName: %s", olhamaResp.RegisteredName)
+			if err := helpers.UpdateLeadField(leadID, "RegisteredName", olhamaResp.RegisteredName); err != nil {
+				log.Printf("Erro ao atualizar RegisteredName: %v", err)
+				d.Nack(false, true)
+				continue
+			}
+
 			log.Printf("CNPJ: %s", olhamaResp.CNPJ)
+			if err := helpers.UpdateLeadField(leadID, "CompanyRegistrationID", olhamaResp.CNPJ); err != nil {
+				log.Printf("Erro ao atualizar CompanyRegistrationID: %v", err)
+				d.Nack(false, true)
+				continue
+			}
+
 			log.Printf("Contatos: %+v", olhamaResp.Contatos)
+			if err := helpers.UpdateLeadField(leadID, "Owner", olhamaResp.Contatos); err != nil {
+				log.Printf("Erro ao atualizar Owner: %v", err)
+				d.Nack(false, true)
+				continue
+			}
+
 			log.Printf("DataFundacao: %s", olhamaResp.DataFundacao)
+			if err := helpers.UpdateLeadField(leadID, "FoundationDate", olhamaResp.DataFundacao); err != nil {
+				log.Printf("Erro ao atualizar FoundationDate: %v", err)
+				d.Nack(false, true)
+				continue
+			}
+
 			log.Printf("Website: %s", olhamaResp.Website)
+			if err := helpers.UpdateLeadField(leadID, "Website", olhamaResp.Website); err != nil {
+				log.Printf("Erro ao atualizar Website: %v", err)
+				d.Nack(false, true)
+				continue
+			}
+
 			log.Printf("RedesSociais: %+v", olhamaResp.RedesSociais)
 			log.Printf("AnaliseEmpresa: %s", olhamaResp.AnaliseEmpresa)
 			log.Printf("MensagemWhatsApp: %s", olhamaResp.Message.Content)
@@ -128,5 +159,3 @@ func ConsumeQueue() {
 	log.Println("Aguardando mensagens na fila 'combined_leads_queue' para enviar ao Olhama...")
 	select {}
 }
-
-// extraiu dados 3
