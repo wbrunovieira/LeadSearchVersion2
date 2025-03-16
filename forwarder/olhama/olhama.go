@@ -70,3 +70,18 @@ func Publish(data types.CombinedLeadData) ([]byte, error) {
 	log.Println("Dados enviados com sucesso para Olhama")
 	return respBody, nil
 }
+
+func CallOlhama(data types.CombinedLeadData) (types.OlhamaResponse, error) {
+	var respData types.OlhamaResponse
+
+	rawResp, err := Publish(data)
+	if err != nil {
+		return respData, fmt.Errorf("erro ao enviar dados para Olhama: %v", err)
+	}
+
+	if err := json.Unmarshal(rawResp, &respData); err != nil {
+		return respData, fmt.Errorf("erro ao decodificar resposta do Olhama: %v", err)
+	}
+
+	return respData, nil
+}

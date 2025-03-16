@@ -59,8 +59,8 @@ type Lead struct {
 	FieldsFilled int    `gorm:"default:0"`
 	GoogleId     string `gorm:"type:text"`
 
-	Category string `gorm:"type:text"` // categoria enviada pelo frontend
-	Radius   int    `gorm:"default:0"` // raio utilizado na busca
+	Category string `gorm:"type:text"`
+	Radius   int    `gorm:"default:0"`
 
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
@@ -137,12 +137,39 @@ func GetLeadByID(leadID uuid.UUID) (*Lead, error) {
 func UpdateLead(lead *Lead) error {
 	existingLead, err := GetLeadByID(lead.ID)
 	if err != nil {
-		return fmt.Errorf("Erro ao buscar o lead: %v", err)
+		return fmt.Errorf("erro ao buscar o lead: %v", err)
 	}
 
 	if existingLead == nil {
 		return fmt.Errorf("Lead não encontrado para ID: %s", lead.ID)
 	}
+
+	existingLead.RegisteredName = lead.RegisteredName
+	existingLead.FoundationDate = lead.FoundationDate
+	existingLead.Address = lead.Address
+	existingLead.City = lead.City
+	existingLead.State = lead.State
+
+	existingLead.ZIPCode = lead.ZIPCode
+	existingLead.Owner = lead.Owner
+	existingLead.Source = lead.Source
+	existingLead.Phone = lead.Phone
+	existingLead.Whatsapp = lead.Whatsapp
+	existingLead.Website = lead.Website
+	existingLead.Email = lead.Email
+	existingLead.Instagram = lead.Instagram
+	existingLead.Facebook = lead.Facebook
+	existingLead.TikTok = lead.TikTok
+	existingLead.CompanyRegistrationID = lead.CompanyRegistrationID
+	existingLead.Categories = lead.Categories
+	existingLead.Rating = lead.Rating
+	existingLead.PriceLevel = lead.PriceLevel
+	existingLead.UserRatingsTotal = lead.UserRatingsTotal
+	existingLead.Vicinity = lead.Vicinity
+	existingLead.PermanentlyClosed = lead.PermanentlyClosed
+	existingLead.CompanySize = lead.CompanySize
+	existingLead.Revenue = lead.Revenue
+	existingLead.EmployeesCount = lead.EmployeesCount
 
 	if lead.Description != "" {
 		if existingLead.Description != "" {
@@ -151,10 +178,21 @@ func UpdateLead(lead *Lead) error {
 			existingLead.Description = lead.Description
 		}
 	}
+	existingLead.PrimaryActivity = lead.PrimaryActivity
+	existingLead.SecondaryActivities = lead.SecondaryActivities
+	existingLead.Types = lead.Types
+	existingLead.EquityCapital = lead.EquityCapital
+	existingLead.BusinessStatus = lead.BusinessStatus
+	existingLead.Quality = lead.Quality
+	existingLead.SearchTerm = lead.SearchTerm
+	existingLead.FieldsFilled = lead.FieldsFilled
+
+	existingLead.Category = lead.Category
+	existingLead.Radius = lead.Radius
 
 	result := DB.Save(existingLead)
 	if result.Error != nil {
-		return fmt.Errorf("Erro ao atualizar o lead: %v", result.Error)
+		return fmt.Errorf("erro ao atualizar o lead: %v", result.Error)
 	}
 	return nil
 }

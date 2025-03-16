@@ -43,6 +43,7 @@ func main() {
 	mux.HandleFunc("/save-leads", handlers.SaveLeadsHandler)
 	mux.HandleFunc("/list-leads", handlers.ListLeadsHandler)
 	mux.HandleFunc("/health", handlers.HealthHandler)
+	mux.HandleFunc("/update-lead-field", handlers.UpdateLeadHandler)
 
 	handler := middleware.CORS(mux)
 

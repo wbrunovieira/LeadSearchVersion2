@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"github.com/google/uuid"
@@ -178,4 +179,90 @@ func saveLead(placeDetails map[string]interface{}) (*db.Lead, error) {
 	log.Printf("Lead salvo no banco de dados: %+v", lead)
 	// Retorne o ID do lead salvo
 	return &lead, nil
+}
+
+func UpdateLeadHandler(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method != http.MethodPut {
+		http.Error(w, "Método não permitido. Use PUT.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ID    string      `json:"id"`
+		Field string      `json:"field"`
+		Value interface{} `json:"value"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "JSON inválido", http.StatusBadRequest)
+		return
+	}
+
+	leadID, err := uuid.Parse(req.ID)
+	if err != nil {
+		http.Error(w, "ID inválido", http.StatusBadRequest)
+		return
+	}
+
+	lead, err := db.GetLeadByID(leadID)
+	if err != nil || lead == nil {
+		http.Error(w, "Lead não encontrado", http.StatusNotFound)
+		return
+	}
+
+	leadValue := reflect.ValueOf(lead).Elem()
+	fieldVal := leadValue.FieldByName(req.Field)
+	if !fieldVal.IsValid() {
+		http.Error(w, fmt.Sprintf("Campo '%s' não existe", req.Field), http.StatusBadRequest)
+		return
+	}
+	if !fieldVal.CanSet() {
+		http.Error(w, fmt.Sprintf("Campo '%s' não pode ser alterado", req.Field), http.StatusBadRequest)
+		return
+	}
+
+	switch fieldVal.Kind() {
+	case reflect.String:
+
+		if v, ok := req.Value.(string); ok {
+			fieldVal.SetString(v)
+		} else {
+			http.Error(w, fmt.Sprintf("Tipo inválido para o campo '%s', esperava string", req.Field), http.StatusBadRequest)
+			return
+		}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+
+		if v, ok := req.Value.(float64); ok {
+			fieldVal.SetInt(int64(v))
+		} else {
+			http.Error(w, fmt.Sprintf("Tipo inválido para o campo '%s', esperava número", req.Field), http.StatusBadRequest)
+			return
+		}
+	case reflect.Float32, reflect.Float64:
+		if v, ok := req.Value.(float64); ok {
+			fieldVal.SetFloat(v)
+		} else {
+			http.Error(w, fmt.Sprintf("Tipo inválido para o campo '%s', esperava número", req.Field), http.StatusBadRequest)
+			return
+		}
+	case reflect.Bool:
+		if v, ok := req.Value.(bool); ok {
+			fieldVal.SetBool(v)
+		} else {
+			http.Error(w, fmt.Sprintf("Tipo inválido para o campo '%s', esperava booleano", req.Field), http.StatusBadRequest)
+			return
+		}
+	default:
+		http.Error(w, fmt.Sprintf("Tipo do campo '%s' não suportado para atualização", req.Field), http.StatusBadRequest)
+		return
+	}
+
+	if err := db.UpdateLead(lead); err != nil {
+		http.Error(w, fmt.Sprintf("Erro ao atualizar o lead: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Lead atualizado com sucesso"))
 }
