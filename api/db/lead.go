@@ -72,6 +72,8 @@ func CreateLead(lead *Lead) error {
 	result := DB.Where("google_id = ?", lead.GoogleId).First(&existingLead)
 	if result.Error == nil {
 		log.Printf("Lead com GoogleId %s já existe. Ignorando inserção.", lead.GoogleId)
+
+		*lead = existingLead
 		return nil
 	}
 
@@ -121,35 +123,41 @@ func GetLeadIdByGoogleId(googleId string) (uuid.UUID, error) {
 }
 
 func GetLeadByID(leadID uuid.UUID) (*Lead, error) {
+	log.Printf("GetLeadByID: Buscando lead com ID: %s", leadID.String())
 	var lead Lead
 	result := DB.First(&lead, "id = ?", leadID)
-
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			log.Printf("GetLeadByID: Lead não encontrado para ID: %s", leadID.String())
 			return nil, nil
 		}
+		log.Printf("GetLeadByID: Erro ao buscar o lead com ID %s: %v", leadID.String(), result.Error)
 		return nil, result.Error
 	}
-
+	log.Printf("GetLeadByID: Lead encontrado: %+v", lead)
 	return &lead, nil
 }
 
 func UpdateLead(lead *Lead) error {
+	log.Printf("UpdateLead: Tentando atualizar lead com ID: %s", lead.ID.String())
 	existingLead, err := GetLeadByID(lead.ID)
 	if err != nil {
+		log.Printf("UpdateLead: Erro ao buscar o lead: %v", err)
 		return fmt.Errorf("erro ao buscar o lead: %v", err)
 	}
 
 	if existingLead == nil {
-		return fmt.Errorf("Lead não encontrado para ID: %s", lead.ID)
+		log.Printf("UpdateLead: Lead não encontrado para ID: %s", lead.ID.String())
+		return fmt.Errorf("Lead não encontrado para ID: %s", lead.ID.String())
 	}
+
+	log.Printf("UpdateLead: Dados atuais do lead: %+v", existingLead)
 
 	existingLead.RegisteredName = lead.RegisteredName
 	existingLead.FoundationDate = lead.FoundationDate
 	existingLead.Address = lead.Address
 	existingLead.City = lead.City
 	existingLead.State = lead.State
-
 	existingLead.ZIPCode = lead.ZIPCode
 	existingLead.Owner = lead.Owner
 	existingLead.Source = lead.Source
@@ -186,13 +194,16 @@ func UpdateLead(lead *Lead) error {
 	existingLead.Quality = lead.Quality
 	existingLead.SearchTerm = lead.SearchTerm
 	existingLead.FieldsFilled = lead.FieldsFilled
-
 	existingLead.Category = lead.Category
 	existingLead.Radius = lead.Radius
 
+	log.Printf("UpdateLead: Dados atualizados para salvar: %+v", existingLead)
 	result := DB.Save(existingLead)
 	if result.Error != nil {
+		log.Printf("UpdateLead: Erro ao atualizar o lead: %v", result.Error)
 		return fmt.Errorf("erro ao atualizar o lead: %v", result.Error)
 	}
+
+	log.Printf("UpdateLead: Lead atualizado com sucesso: %+v", existingLead)
 	return nil
 }

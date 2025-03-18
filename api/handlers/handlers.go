@@ -2,12 +2,14 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -39,7 +41,6 @@ func SaveLeadsHandler(w http.ResponseWriter, r *http.Request) {
 
 		if err := rabbitmq.PublishLead(lead); err != nil {
 			log.Printf("Falha ao publicar o lead %+v no RabbitMQ: %v", lead, err)
-
 		}
 		log.Printf("Lead #%d salvo e publicado com sucesso", i+1)
 	}
@@ -90,9 +91,10 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func saveLead(placeDetails map[string]interface{}) (*db.Lead, error) {
-	lead := db.Lead{}
-
-	lead.ID = uuid.New()
+	lead := db.Lead{
+		ID:     uuid.New(),
+		Source: "GooglePlaces",
+	}
 
 	if v, ok := placeDetails["Name"].(string); ok {
 		lead.BusinessName = v
@@ -128,6 +130,7 @@ func saveLead(placeDetails map[string]interface{}) (*db.Lead, error) {
 	}
 	if v, ok := placeDetails["Website"].(string); ok {
 		lead.Website = v
+
 		if strings.HasPrefix(lead.Website, "https://www.instagram.com") {
 			lead.Instagram = lead.Website
 			lead.Website = ""
@@ -137,7 +140,8 @@ func saveLead(placeDetails map[string]interface{}) (*db.Lead, error) {
 			lead.Website = ""
 		}
 	}
-	if v, ok := placeDetails["Description"].(string); ok {
+	if v, ok := placeDetails["Description"].(string); ok && !strings.Contains(strings.TrimSpace(v), "No description available") {
+		log.Printf("Valor recebido para Description no saveLead api: [%s]", v)
 		lead.Description = v
 	}
 	if v, ok := placeDetails["Rating"].(float64); ok {
@@ -171,18 +175,15 @@ func saveLead(placeDetails map[string]interface{}) (*db.Lead, error) {
 		lead.GoogleId = v
 	}
 
-	lead.Source = "GooglePlaces"
-
 	if err := db.CreateLead(&lead); err != nil {
 		return nil, fmt.Errorf("failed to save lead to database: %v", err)
 	}
 	log.Printf("Lead salvo no banco de dados: %+v", lead)
-	// Retorne o ID do lead salvo
+	log.Printf("Após CreateLead, lead.ID = %s", lead.ID.String())
 	return &lead, nil
 }
 
 func UpdateLeadHandler(w http.ResponseWriter, r *http.Request) {
-
 	if r.Method != http.MethodPut {
 		http.Error(w, "Método não permitido. Use PUT.", http.StatusMethodNotAllowed)
 		return
@@ -198,7 +199,7 @@ func UpdateLeadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "JSON inválido", http.StatusBadRequest)
 		return
 	}
-	log.Printf("UpdateLeadHandler Body: %v", r.Body)
+	log.Printf("UpdateLeadHandler - Payload recebido: %+v", req)
 
 	leadID, err := uuid.Parse(req.ID)
 	if err != nil {
@@ -223,19 +224,28 @@ func UpdateLeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	oldValue := fieldVal.Interface()
+	log.Printf("UpdateLeadHandler - Atualizando campo '%s': valor antigo = %+v", req.Field, oldValue)
+
 	switch fieldVal.Kind() {
 	case reflect.String:
-
 		if v, ok := req.Value.(string); ok {
-			fieldVal.SetString(v)
+
+			if req.Field == "Description" && strings.TrimSpace(v) == "No description available" {
+				log.Printf("UpdateLeadHandler - Ignorando atualização para o campo '%s' com valor padrão", req.Field)
+			} else {
+				fieldVal.SetString(v)
+				log.Printf("UpdateLeadHandler - Campo '%s' atualizado: '%s' -> '%s'", req.Field, oldValue, v)
+			}
 		} else {
 			http.Error(w, fmt.Sprintf("Tipo inválido para o campo '%s', esperava string", req.Field), http.StatusBadRequest)
 			return
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-
 		if v, ok := req.Value.(float64); ok {
-			fieldVal.SetInt(int64(v))
+			newVal := int64(v)
+			fieldVal.SetInt(newVal)
+			log.Printf("UpdateLeadHandler - Campo '%s' atualizado: '%v' -> '%v'", req.Field, oldValue, newVal)
 		} else {
 			http.Error(w, fmt.Sprintf("Tipo inválido para o campo '%s', esperava número", req.Field), http.StatusBadRequest)
 			return
@@ -243,6 +253,7 @@ func UpdateLeadHandler(w http.ResponseWriter, r *http.Request) {
 	case reflect.Float32, reflect.Float64:
 		if v, ok := req.Value.(float64); ok {
 			fieldVal.SetFloat(v)
+			log.Printf("UpdateLeadHandler - Campo '%s' atualizado: '%v' -> '%v'", req.Field, oldValue, v)
 		} else {
 			http.Error(w, fmt.Sprintf("Tipo inválido para o campo '%s', esperava número", req.Field), http.StatusBadRequest)
 			return
@@ -250,8 +261,29 @@ func UpdateLeadHandler(w http.ResponseWriter, r *http.Request) {
 	case reflect.Bool:
 		if v, ok := req.Value.(bool); ok {
 			fieldVal.SetBool(v)
+			log.Printf("UpdateLeadHandler - Campo '%s' atualizado: '%v' -> '%v'", req.Field, oldValue, v)
 		} else {
 			http.Error(w, fmt.Sprintf("Tipo inválido para o campo '%s', esperava booleano", req.Field), http.StatusBadRequest)
+			return
+		}
+	case reflect.Struct:
+
+		if fieldVal.Type() == reflect.TypeOf(sql.NullTime{}) {
+			if dateStr, ok := req.Value.(string); ok {
+				parsedDate, err := time.Parse("2006-01-02", dateStr)
+				if err != nil {
+					http.Error(w, fmt.Sprintf("Formato de data inválido para o campo '%s': %v", req.Field, err), http.StatusBadRequest)
+					return
+				}
+				nt := sql.NullTime{Time: parsedDate, Valid: true}
+				fieldVal.Set(reflect.ValueOf(nt))
+				log.Printf("UpdateLeadHandler - Campo '%s' atualizado: '%+v' -> '%+v'", req.Field, oldValue, nt)
+			} else {
+				http.Error(w, fmt.Sprintf("Tipo inválido para o campo '%s', esperava string no formato YYYY-MM-DD", req.Field), http.StatusBadRequest)
+				return
+			}
+		} else {
+			http.Error(w, fmt.Sprintf("Tipo do campo '%s' não suportado para atualização", req.Field), http.StatusBadRequest)
 			return
 		}
 	default:
@@ -264,8 +296,7 @@ func UpdateLeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("UpdateLeadHandler - Atualização concluída para o lead com ID: %s", lead.ID)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Lead atualizado com sucesso"))
 }
-
-//alterado

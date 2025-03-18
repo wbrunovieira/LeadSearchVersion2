@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/wbrunovieira/LeadSearchVersion2/forwarder/types"
@@ -27,15 +28,20 @@ func Publish(data types.CombinedLeadData) ([]byte, error) {
 	}
 
 	payload := types.OlhamaPayload{
-		Model:  "deepseek-r1",
-		Stream: false,
+		Model:       "qwen2.5:14b",
+		Stream:      false,
+		Temperature: 0.4,
 		Messages: []struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		}{
 			{
+				Role:    "system",
+				Content: "Você é um especialista em geração de listas de leads. Seu papel é identificar e extrair informações relevantes sobre a empresa, incluindo CNPJ, socios, telefone e dados de contato.",
+			},
+			{
 				Role:    "user",
-				Content: fmt.Sprintf("%s\n\nCombined Data:\n%s", data.Prompt, string(combinedJSON)),
+				Content: fmt.Sprintf("%s\n\nDados combinados:\n%s", data.Prompt, string(combinedJSON)),
 			},
 		},
 	}
@@ -73,15 +79,50 @@ func Publish(data types.CombinedLeadData) ([]byte, error) {
 
 func CallOlhama(data types.CombinedLeadData) (types.OlhamaResponse, error) {
 	var respData types.OlhamaResponse
+	var outerResp types.OlhamaOuterResponse
 
 	rawResp, err := Publish(data)
 	if err != nil {
 		return respData, fmt.Errorf("erro ao enviar dados para Olhama: %v", err)
 	}
 
-	if err := json.Unmarshal(rawResp, &respData); err != nil {
-		return respData, fmt.Errorf("erro ao decodificar resposta do Olhama: %v", err)
+	if err := json.Unmarshal(rawResp, &outerResp); err != nil {
+		return respData, fmt.Errorf("erro ao decodificar resposta externa do Olhama: %v", err)
 	}
+	log.Printf("CallOlhama - Outer Response: %+v", outerResp)
+
+	cleanedStr := cleanResponse(outerResp.Message.Content)
+	cleanedBytes := []byte(cleanedStr)
+
+	if err := json.Unmarshal(cleanedBytes, &respData); err != nil {
+		return respData, fmt.Errorf("erro ao decodificar resposta interna do Olhama: %v", err)
+	}
+	log.Printf("CallOlhama - Inner Response (respData): %+v", respData)
 
 	return respData, nil
+}
+
+func cleanResponse(response string) string {
+	log.Printf("cleanResponse - Raw response received: %s", response)
+	cleaned := response
+	if strings.HasPrefix(cleaned, "```json") {
+		log.Printf("cleanResponse - Detected Markdown delimiters. Removing them...")
+		cleaned = strings.TrimPrefix(cleaned, "```json")
+		cleaned = strings.TrimSuffix(cleaned, "```")
+		cleaned = strings.TrimSpace(cleaned)
+		log.Printf("cleanResponse - After removing markdown: %s", cleaned)
+	} else {
+		log.Printf("cleanResponse - No Markdown delimiters detected.")
+	}
+
+	if idx := strings.Index(cleaned, "<think>"); idx != -1 {
+		log.Printf("cleanResponse - Detected '<think>' block. Removing content starting from index %d", idx)
+		cleaned = strings.TrimSpace(cleaned[:idx])
+		log.Printf("cleanResponse - After removing <think> block: %s", cleaned)
+	}
+
+	cleaned = strings.Trim(cleaned, "`")
+	log.Printf("cleanResponse - After trimming extra backticks: %s", cleaned)
+
+	return cleaned
 }

@@ -105,14 +105,13 @@ func consumeCombinedData() {
 }
 
 func indexCombinedData(body []byte) {
-	// Opcional: Você pode fazer o parse do documento
+
 	var doc CombinedLeadData
 	if err := json.Unmarshal(body, &doc); err != nil {
 		log.Printf("Erro ao decodificar documento: %v", err)
-		// Se preferir indexar o JSON bruto, comente a linha acima
+
 	}
 
-	// Indexa o documento no índice "combined_leads"
 	res, err := esClient.Index(
 		"combined_leads",
 		bytes.NewReader(body),
@@ -133,12 +132,11 @@ func indexCombinedData(body []byte) {
 }
 
 func main() {
-	// Inicializa o Elasticsearch e o RabbitMQ
+
 	initElasticsearch()
 	initAMQP()
 	defer amqpConn.Close()
 	defer amqpCh.Close()
 
-	// Inicia a rotina de consumo
 	consumeCombinedData()
 }

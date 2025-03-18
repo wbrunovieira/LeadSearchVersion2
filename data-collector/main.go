@@ -96,14 +96,13 @@ func processLeadMessage(body []byte) {
 	}
 
 	log.Printf("Lead recebido: %+v", lead)
+	log.Printf("Data Collector - Lead recebido com ID: %s", lead.ID)
 
-	// Se o BusinessName estiver vazio, não realiza o enriquecimento.
 	if lead.BusinessName == "" {
 		log.Printf("BusinessName vazio para o lead com ID: %s. Pulando enriquecimento.", lead.ID)
 		return
 	}
 
-	// Monta a query para o Tavily usando BusinessName, City e State.
 	query := lead.BusinessName
 	if lead.City != "" {
 		query += " " + lead.City
@@ -117,9 +116,9 @@ func processLeadMessage(body []byte) {
 
 	log.Printf("Query enviada para o Tavily: %s", query)
 
-	// Chamada à API Tavily para enriquecimento.
 	var combinedData CombinedLeadData
 	combinedData.Lead = lead
+	log.Printf("combinedData.Lead: %s", combinedData.Lead)
 
 	enrichedData, err := tavily.EnrichLead(query)
 	if err != nil {
@@ -128,7 +127,6 @@ func processLeadMessage(body []byte) {
 		log.Printf("Resposta bruta da API Tavily: %+v", enrichedData)
 		combinedData.TavilyData = enrichedData
 
-		// Extraindo campos específicos, se desejado:
 		cnpjTavily, phone, owner, email, website := tavily.ExtractLeadInfo(enrichedData)
 		combinedData.TavilyExtra.CNPJ = cnpjTavily
 		combinedData.TavilyExtra.Phone = phone
@@ -140,7 +138,6 @@ func processLeadMessage(body []byte) {
 			cnpjTavily, phone, owner, email, website)
 	}
 
-	// Chamada à API Serper para capturar CNPJs.
 	serperResult, err := serper.FetchSerperDataForCNPJ(lead.BusinessName, lead.City)
 	if err != nil {
 		log.Printf("Erro na chamada à API Serper: %v", err)
@@ -148,7 +145,6 @@ func processLeadMessage(body []byte) {
 		log.Printf("Dados da API Serper: %+v", serperResult)
 		combinedData.SerperData = serperResult
 
-		// Se foram capturados CNPJs, consulta os dados detalhados via API Invertexto.
 		if capturedIface, ok := serperResult["captured_cnpjs"]; ok {
 			if cnpjs, ok := capturedIface.([]string); ok && len(cnpjs) > 0 {
 				cnpjData, err := cnpj.FetchCNPJData(cnpjs[0])
@@ -162,7 +158,9 @@ func processLeadMessage(body []byte) {
 		}
 	}
 
-	// Publica os dados combinados em uma fila RabbitMQ.
+	log.Printf("combinedData final - Lead: %+v", combinedData.Lead)
+	log.Printf("combinedData final - Lead.ID: %s", combinedData.Lead.ID)
+
 	if err := PublishCombinedLead(combinedData); err != nil {
 		log.Printf("Erro ao publicar dados combinados no RabbitMQ: %v", err)
 	} else {
@@ -171,12 +169,12 @@ func processLeadMessage(body []byte) {
 }
 
 func PublishCombinedLead(data CombinedLeadData) error {
-	// Converte para JSON
+
 	body, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("erro ao converter dados combinados para JSON: %v", err)
 	}
-	// Publica na fila "combined_leads_queue"
+
 	err = rabbitCh.Publish(
 		"",                     // Usando a default exchange
 		"combined_leads_queue", // nome da fila

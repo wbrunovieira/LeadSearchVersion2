@@ -1,4 +1,3 @@
-// forwarder/helpers/updateLead.go
 package helpers
 
 import (
@@ -11,9 +10,15 @@ import (
 	"time"
 )
 
-// UpdateLeadField envia uma requisição PUT para atualizar um campo específico do lead.
-// updateURL é a URL da rota da API (por exemplo, http://localhost:8085/update-lead-field).
 func UpdateLeadField(leadID string, field string, value interface{}) error {
+
+	if field == "FoundationDate" {
+		if dateStr, ok := value.(string); ok && dateStr == "" {
+			log.Printf("Valor vazio para FoundationDate, atualização ignorada")
+			return nil
+		}
+	}
+
 	updateURL := "http://api:8085/update-lead-field"
 	payload := map[string]interface{}{
 		"id":    leadID,
@@ -48,5 +53,3 @@ func UpdateLeadField(leadID string, field string, value interface{}) error {
 
 	return nil
 }
-
-//done
