@@ -65,15 +65,22 @@ func startSearchHandler(w http.ResponseWriter, r *http.Request) {
 	zipcodeIDString := r.URL.Query().Get("zipcode_id")
 	radiusStr := r.URL.Query().Get("radius")
 	maxResultsStr := r.URL.Query().Get("max_results")
+	country := r.URL.Query().Get("country")
+	if country == "" {
+		country = "br" // Valor padrão se country não for informado
+	}
 
-	log.Printf("startSearchHandler: Parâmetros recebidos - category_id=%s, zipcode_id=%s, radius=%s, max_results=%s", categoryID, zipcodeIDString, radiusStr, maxResultsStr)
+	log.Printf("startSearchHandler: Parâmetros recebidos - category_id=%s, zipcode_id=%s, radius=%s, max_results=%s, country=%s",
+		categoryID, zipcodeIDString, radiusStr, maxResultsStr, country)
 
+	// Verifica se os parâmetros obrigatórios foram enviados
 	if categoryID == "" || zipcodeIDString == "" || radiusStr == "" {
 		log.Println("startSearchHandler: Parâmetros obrigatórios faltando")
 		http.Error(w, "Missing required parameters (category_id, zipcode_id, radius)", http.StatusBadRequest)
 		return
 	}
 
+	// Conversões dos parâmetros numéricos
 	radiusInt, err := strconv.Atoi(radiusStr)
 	if err != nil {
 		log.Printf("startSearchHandler: Valor de radius inválido: %s", radiusStr)
@@ -109,7 +116,8 @@ func startSearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("startSearchHandler: API key obtida")
 
-	err = startSearch(apiKey, categoryID, zipcodeID, radiusInt, maxResults)
+	// Passa o parâmetro country para a função de início de pesquisa
+	err = startSearch(apiKey, categoryID, zipcodeID, radiusInt, maxResults, country)
 	if err != nil {
 		log.Printf("startSearchHandler: Erro ao iniciar pesquisa: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to start search: %v", err), http.StatusInternalServerError)
@@ -117,17 +125,18 @@ func startSearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Println("startSearchHandler: Pesquisa iniciada com sucesso")
-	fmt.Fprintf(w, "Search started for categoryID: %s, zipcodeID: %d, radius: %d", categoryID, zipcodeID, radiusInt)
+	fmt.Fprintf(w, "Search started for categoryID: %s, zipcodeID: %d, radius: %d, country: %s", categoryID, zipcodeID, radiusInt, country)
 }
 
-func startSearch(apiKey string, categoryID string, zipcodeID, radius, maxResults int) error {
-	log.Printf("Iniciando pesquisa: categoryID=%s, zipcodeID=%d, radius=%d, maxResults=%d",
-		categoryID, zipcodeID, radius, maxResults)
+func startSearch(apiKey string, categoryID string, zipcodeID, radius, maxResults int, country string) error {
+	log.Printf("Iniciando pesquisa: categoryID=%s, zipcodeID=%d, radius=%d, maxResults=%d, country=%s",
+		categoryID, zipcodeID, radius, maxResults, country)
 
 	service := googleplaces.NewService(apiKey)
 
 	zipcodeString := strconv.Itoa(zipcodeID)
-	locationStr, err := service.GeocodeZip(zipcodeString)
+
+	locationStr, err := service.GeocodeZip(zipcodeString, country)
 	if err != nil {
 		return fmt.Errorf("erro ao geocodificar o CEP %d: %v", zipcodeID, err)
 	}

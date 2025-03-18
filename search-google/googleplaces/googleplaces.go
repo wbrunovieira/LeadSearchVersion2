@@ -38,7 +38,7 @@ func NewService(apiKey string) *Service {
 	return &Service{APIKey: apiKey}
 }
 
-func (s *Service) GeocodeZip(zipCode string) (string, error) {
+func (s *Service) GeocodeZip(zipCode string, country string) (string, error) {
 	log.Printf("Buscando coordenadas para o zipCode: %s", zipCode)
 
 	client := resty.New()
@@ -46,8 +46,9 @@ func (s *Service) GeocodeZip(zipCode string) (string, error) {
 	geocodeURL := "https://maps.googleapis.com/maps/api/geocode/json"
 	resp, err := client.R().
 		SetQueryParams(map[string]string{
-			"address": zipCode,
-			"key":     s.APIKey,
+			"address":    zipCode,
+			"components": "country:" + country,
+			"key":        s.APIKey,
 		}).
 		Get(geocodeURL)
 
@@ -149,7 +150,6 @@ func loadToken(queryKey string) (string, int, int, error) {
 		return "", 0, 0, fmt.Errorf("erro ao converter valores: %v", queryData)
 	}
 
-	// Retorna valores padrão se a chave não existir
 	return "", 0, 0, nil
 }
 
