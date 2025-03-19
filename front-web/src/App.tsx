@@ -12,14 +12,12 @@ function App() {
   const [zipcodeID, setZipcodeID] = useState<string>('');
   const [radius, setRadius] = useState<number>(3000);
   const [maxResults, setMaxResults] = useState<number>(5);
+  const [country, setCountry] = useState<string>('br'); // Estado para o país
   const [message, setMessage] = useState<string>('');
-  const [messageType, setMessageType] = useState<
-    'success' | 'error' | ''
-  >('');
+  const [messageType, setMessageType] = useState<'success' | 'error' | ''>('');
   const [leads, setLeads] = useState<Lead[]>([]);
 
-  const BACKEND_URL_Search_GOOGLE =
-    'http://192.168.0.9:8082';
+  const BACKEND_URL_Search_GOOGLE = 'http://192.168.0.9:8082';
   const BACKEND_URL_API = 'http://192.168.0.9:8085';
 
   const handleStartSearch = async () => {
@@ -27,11 +25,9 @@ function App() {
       setMessage('Iniciando busca...');
       setMessageType('');
 
-      const normalizedZipcode = zipcodeID.replace(
-        /\D/g,
-        ''
-      );
-      const url = `${BACKEND_URL_Search_GOOGLE}/start-search?category_id=${categoryID}&zipcode_id=${normalizedZipcode}&radius=${radius}&max_results=${maxResults}`;
+      const normalizedZipcode = zipcodeID.replace(/\D/g, '');
+
+      const url = `${BACKEND_URL_Search_GOOGLE}/start-search?category_id=${categoryID}&zipcode_id=${normalizedZipcode}&radius=${radius}&max_results=${maxResults}&country=${country}`;
       const response = await fetch(url);
       console.log('url', url);
       console.log('zipcodeID', zipcodeID);
@@ -109,6 +105,23 @@ function App() {
           onChange={e => setZipcodeID(e.target.value)}
           className="w-full p-2 border border-gray-300 rounded text-black"
         />
+      </div>
+
+      {/* Campo para seleção de País */}
+      <div className="mb-4 bg-white p-4 rounded-md">
+        <label className="block text-gray-700 font-medium mb-2">
+          País:
+        </label>
+        <select
+          value={country}
+          onChange={e => setCountry(e.target.value)}
+          className="w-full p-2 border border-gray-300 rounded text-black"
+        >
+          <option value="br">Brasil</option>
+          <option value="us">Estados Unidos</option>
+          <option value="ca">Canadá</option>
+          {/* Adicione outras opções de país conforme necessário */}
+        </select>
       </div>
 
       {/* Campo para Radius */}

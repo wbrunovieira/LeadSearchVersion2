@@ -24,7 +24,7 @@ var (
 type CombinedLeadData struct {
 	Lead       common.Lead            `json:"lead"`
 	TavilyData *tavily.TavilyResponse `json:"tavily_data,omitempty"`
-	// Você pode também incluir os campos extraídos de Tavily se preferir:
+
 	TavilyExtra struct {
 		CNPJ    string `json:"cnpj,omitempty"`
 		Phone   string `json:"phone,omitempty"`
@@ -120,14 +120,17 @@ func processLeadMessage(body []byte) {
 	combinedData.Lead = lead
 	log.Printf("combinedData.Lead: %s", combinedData.Lead)
 
-	enrichedData, err := tavily.EnrichLead(query)
+	// Definir o número máximo de resultados que queremos do Tavily
+	maxResults := 5
+
+	enrichedData, err := tavily.EnrichLead(query, maxResults)
 	if err != nil {
 		log.Printf("Erro ao enriquecer o lead com Tavily: %v", err)
 	} else {
 		log.Printf("Resposta bruta da API Tavily: %+v", enrichedData)
 		combinedData.TavilyData = enrichedData
 
-		cnpjTavily, phone, owner, email, website := tavily.ExtractLeadInfo(enrichedData)
+		cnpjTavily, phone, owner, email, website := tavily.ExtractLeadInfo(enrichedData, lead.BusinessName)
 		combinedData.TavilyExtra.CNPJ = cnpjTavily
 		combinedData.TavilyExtra.Phone = phone
 		combinedData.TavilyExtra.Owner = owner
@@ -138,7 +141,7 @@ func processLeadMessage(body []byte) {
 			cnpjTavily, phone, owner, email, website)
 	}
 
-	serperResult, err := serper.FetchSerperDataForCNPJ(lead.BusinessName, lead.City)
+	serperResult, err := serper.FetchSerperDataForCNPJ(lead.BusinessName, lead.City, 10)
 	if err != nil {
 		log.Printf("Erro na chamada à API Serper: %v", err)
 	} else {

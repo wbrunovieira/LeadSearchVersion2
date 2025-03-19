@@ -1,4 +1,4 @@
-// common/lead.go
+// /data-collector/common/lead.go
 package common
 
 import (

@@ -1,16 +1,15 @@
-// /data-collector/tavily/tavily.go
 package tavily
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
-	"regexp"
-
 	"net/http"
 	"os"
+	"regexp"
+	"sort"
 )
 
 type TavilyResult struct {
@@ -21,22 +20,23 @@ type TavilyResult struct {
 }
 
 type TavilyResponse struct {
-	Query             string         `json:"query"`
-	FollowUpQuestions interface{}    `json:"follow_up_questions"`
-	Answer            interface{}    `json:"answer"`
-	Images            []interface{}  `json:"images"`
-	Results           []TavilyResult `json:"results"`
-	ResponseTime      float64        `json:"response_time"`
+	Query        string         `json:"query"`
+	Results      []TavilyResult `json:"results"`
+	ResponseTime float64        `json:"response_time"`
 }
 
-func EnrichLead(query string) (*TavilyResponse, error) {
+func EnrichLead(query string, maxResults int) (*TavilyResponse, error) {
 	apiKey := os.Getenv("TAVILY_API_KEY")
 	if apiKey == "" {
 		return nil, fmt.Errorf("TAVILY_API_KEY não definida no ambiente")
 	}
 
-	payload := map[string]string{
-		"query": query,
+	payload := map[string]interface{}{
+		"query":               query,
+		"max_results":         maxResults,
+		"search_depth":        "advanced", // Usando busca avançada para maior precisão
+		"include_answer":      false,
+		"include_raw_content": true, // Inclui conteúdo bruto para melhor extração
 	}
 
 	payloadBytes, err := json.Marshal(payload)
@@ -59,7 +59,7 @@ func EnrichLead(query string) (*TavilyResponse, error) {
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao ler a resposta: %v", err)
 	}
@@ -70,46 +70,47 @@ func EnrichLead(query string) (*TavilyResponse, error) {
 		return nil, fmt.Errorf("erro ao decodificar resposta da API Tavily: %v", err)
 	}
 
+	// Ordena resultados pela pontuação de relevância
+	sort.SliceStable(tavilyResp.Results, func(i, j int) bool {
+		return tavilyResp.Results[i].Score > tavilyResp.Results[j].Score
+	})
+
 	return &tavilyResp, nil
 }
 
-func ExtractLeadInfo(resp *TavilyResponse) (cnpj, phone, owner, email, website string) {
+func ExtractLeadInfo(resp *TavilyResponse, leadName string) (string, string, string, string, string) {
+	cnpjRegex := regexp.MustCompile(`\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}`)
+	phoneRegex := regexp.MustCompile(`\+\d{2}\s?\d{2,3}\s?\d{4,5}-\d{4}`)
+	emailRegex := regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
 
-	cnpjRegex := regexp.MustCompile(`\d{2}\.\d{3}\.\d{3}\/\d{4}\-\d{2}`)
-	phoneRegex := regexp.MustCompile(`\+\d{2}\s?\d{2,3}\s?\d{4,5}\-\d{4}`)
-	emailRegex := regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+	var cnpjList, phoneList, emailList []string
+	var website, owner string
 
 	for _, result := range resp.Results {
-
-		if cnpj == "" {
-			if matches := cnpjRegex.FindStringSubmatch(result.Content); len(matches) > 0 {
-				cnpj = matches[0]
-			}
+		if len(cnpjList) == 0 {
+			cnpjList = cnpjRegex.FindAllString(result.Content, -1)
 		}
-
-		if phone == "" {
-			if matches := phoneRegex.FindStringSubmatch(result.Content); len(matches) > 0 {
-				phone = matches[0]
-			}
+		if len(phoneList) == 0 {
+			phoneList = phoneRegex.FindAllString(result.Content, -1)
 		}
-
-		if email == "" {
-			if matches := emailRegex.FindStringSubmatch(result.Content); len(matches) > 0 {
-				email = matches[0]
-			}
+		if len(emailList) == 0 {
+			emailList = emailRegex.FindAllString(result.Content, -1)
 		}
-
 		if website == "" && result.URL != "" {
-
-			if len(result.URL) >= 4 && (result.URL[:4] == "http" || result.URL[:5] == "https") {
-				website = result.URL
-			}
+			website = result.URL
 		}
-
 		if owner == "" && result.Title != "" {
-
+			owner = result.Title
 		}
 	}
 
-	return cnpj, phone, owner, email, website
+	// Retorna apenas o primeiro item de cada lista ou vazio caso não encontre
+	return firstOrEmpty(cnpjList), firstOrEmpty(phoneList), owner, firstOrEmpty(emailList), website
+}
+
+func firstOrEmpty(list []string) string {
+	if len(list) > 0 {
+		return list[0]
+	}
+	return ""
 }

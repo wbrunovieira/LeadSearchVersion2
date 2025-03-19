@@ -5,13 +5,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
+	"strings"
 )
 
-// Estruturas que representam a resposta da API Serper
 type OrganicResult struct {
 	Title   string `json:"title"`
 	Snippet string `json:"snippet"`
@@ -22,16 +23,15 @@ type SerperResponse struct {
 	Organic []OrganicResult `json:"organic"`
 }
 
-// FetchSerperDataForCNPJ faz uma requisição à API Serper com o termo "CNPJ"
-// e extrai os CNPJs dos resultados orgânicos.
-func FetchSerperDataForCNPJ(name, city string) (map[string]interface{}, error) {
-	// Monta a query, adicionando o termo "CNPJ"
+// FetchSerperDataForCNPJ faz uma busca no Serper e retorna os CNPJs encontrados
+func FetchSerperDataForCNPJ(name, city string, numResults int) (map[string]interface{}, error) {
+
 	query := fmt.Sprintf("%s, %s CNPJ", name, city)
 	payload := map[string]interface{}{
 		"q":   query,
 		"gl":  "br",
 		"hl":  "pt-br",
-		"num": 30,
+		"num": numResults, // Agora podemos controlar a quantidade de resultados retornados
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -53,14 +53,15 @@ func FetchSerperDataForCNPJ(name, city string) (map[string]interface{}, error) {
 	}
 	defer resp.Body.Close()
 
+	// Se houver erro, capturar resposta para debugging
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
-		return nil, fmt.Errorf("erro na resposta da API Serper: %s", string(body))
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("erro na resposta da API Serper (%d): %s", resp.StatusCode, string(body))
 	}
 
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao ler a resposta: %v", err)
+		return nil, fmt.Errorf("erro ao ler a resposta da API Serper: %v", err)
 	}
 
 	var serperResp SerperResponse
@@ -68,42 +69,54 @@ func FetchSerperDataForCNPJ(name, city string) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("erro ao decodificar a resposta da API Serper: %v", err)
 	}
 
-	cnpjRegex := regexp.MustCompile(`\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}`)
-
-	digitRegex := regexp.MustCompile(`\b\d{14}\b`)
-	capturedCNPJs := make(map[string]bool)
-
-	for _, result := range serperResp.Organic {
-		for _, match := range cnpjRegex.FindAllString(result.Title, -1) {
-			if norm := NormalizeCNPJ(match); norm != "" {
-				capturedCNPJs[norm] = true
-			}
-		}
-		for _, match := range cnpjRegex.FindAllString(result.Snippet, -1) {
-			if norm := NormalizeCNPJ(match); norm != "" {
-				capturedCNPJs[norm] = true
-			}
-		}
-		for _, match := range digitRegex.FindAllString(result.Link, -1) {
-			if norm := NormalizeCNPJ(match); norm != "" {
-				capturedCNPJs[norm] = true
-			}
-		}
-	}
-
-	capturedList := []string{}
-	for cnpj := range capturedCNPJs {
-		capturedList = append(capturedList, cnpj)
-	}
+	// Extrair CNPJs
+	cnpjList := extractCNPJs(serperResp.Organic, name)
 
 	return map[string]interface{}{
 		"serper_info":    serperResp.Organic,
-		"captured_cnpjs": capturedList,
+		"captured_cnpjs": cnpjList,
 	}, nil
 }
 
-func NormalizeCNPJ(cnpj string) string {
+// extractCNPJs melhora a extração dos CNPJs e prioriza os mais relevantes
+func extractCNPJs(results []OrganicResult, leadName string) []string {
+	cnpjRegex := regexp.MustCompile(`\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}`)
+	digitRegex := regexp.MustCompile(`\b\d{14}\b`)
 
+	cnpjScores := make(map[string]int) // Armazena pontuações dos CNPJs para priorizar o mais relevante
+
+	for _, result := range results {
+		foundCNPJs := append(cnpjRegex.FindAllString(result.Title, -1), cnpjRegex.FindAllString(result.Snippet, -1)...)
+		foundCNPJs = append(foundCNPJs, digitRegex.FindAllString(result.Link, -1)...)
+
+		for _, match := range foundCNPJs {
+			normalizedCNPJ := NormalizeCNPJ(match)
+			if normalizedCNPJ != "" {
+				// Aumenta a pontuação se o nome do lead for mencionado no resultado
+				score := 1
+				if strings.Contains(strings.ToLower(result.Title), strings.ToLower(leadName)) ||
+					strings.Contains(strings.ToLower(result.Snippet), strings.ToLower(leadName)) {
+					score += 5
+				}
+				cnpjScores[normalizedCNPJ] += score
+			}
+		}
+	}
+
+	// Ordenar os CNPJs por relevância (maior pontuação primeiro)
+	var sortedCNPJs []string
+	for cnpj := range cnpjScores {
+		sortedCNPJs = append(sortedCNPJs, cnpj)
+	}
+	sort.Slice(sortedCNPJs, func(i, j int) bool {
+		return cnpjScores[sortedCNPJs[i]] > cnpjScores[sortedCNPJs[j]]
+	})
+
+	return sortedCNPJs
+}
+
+// NormalizeCNPJ formata um CNPJ para o padrão XX.XXX.XXX/XXXX-XX
+func NormalizeCNPJ(cnpj string) string {
 	digits := regexp.MustCompile(`\D`).ReplaceAllString(cnpj, "")
 	if len(digits) == 14 {
 		return fmt.Sprintf("%s.%s.%s/%s-%s", digits[:2], digits[2:5], digits[5:8], digits[8:12], digits[12:14])
