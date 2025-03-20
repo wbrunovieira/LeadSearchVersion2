@@ -34,9 +34,9 @@ func EnrichLead(query string, maxResults int) (*TavilyResponse, error) {
 	payload := map[string]interface{}{
 		"query":               query,
 		"max_results":         maxResults,
-		"search_depth":        "advanced", // Usando busca avançada para maior precisão
+		"search_depth":        "advanced",
 		"include_answer":      false,
-		"include_raw_content": true, // Inclui conteúdo bruto para melhor extração
+		"include_raw_content": true,
 	}
 
 	payloadBytes, err := json.Marshal(payload)
@@ -70,7 +70,6 @@ func EnrichLead(query string, maxResults int) (*TavilyResponse, error) {
 		return nil, fmt.Errorf("erro ao decodificar resposta da API Tavily: %v", err)
 	}
 
-	// Ordena resultados pela pontuação de relevância
 	sort.SliceStable(tavilyResp.Results, func(i, j int) bool {
 		return tavilyResp.Results[i].Score > tavilyResp.Results[j].Score
 	})
@@ -104,7 +103,6 @@ func ExtractLeadInfo(resp *TavilyResponse, leadName string) (string, string, str
 		}
 	}
 
-	// Retorna apenas o primeiro item de cada lista ou vazio caso não encontre
 	return firstOrEmpty(cnpjList), firstOrEmpty(phoneList), owner, firstOrEmpty(emailList), website
 }
 

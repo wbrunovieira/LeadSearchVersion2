@@ -23,15 +23,14 @@ type SerperResponse struct {
 	Organic []OrganicResult `json:"organic"`
 }
 
-// FetchSerperDataForCNPJ faz uma busca no Serper e retorna os CNPJs encontrados
 func FetchSerperDataForCNPJ(name, city string, numResults int) (map[string]interface{}, error) {
 
-	query := fmt.Sprintf("%s, %s CNPJ", name, city)
+	query := fmt.Sprintf("%s, %s site oficial OR Instagram", name, city)
 	payload := map[string]interface{}{
 		"q":   query,
 		"gl":  "br",
 		"hl":  "pt-br",
-		"num": numResults, // Agora podemos controlar a quantidade de resultados retornados
+		"num": numResults,
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -78,12 +77,11 @@ func FetchSerperDataForCNPJ(name, city string, numResults int) (map[string]inter
 	}, nil
 }
 
-// extractCNPJs melhora a extração dos CNPJs e prioriza os mais relevantes
 func extractCNPJs(results []OrganicResult, leadName string) []string {
 	cnpjRegex := regexp.MustCompile(`\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}`)
 	digitRegex := regexp.MustCompile(`\b\d{14}\b`)
 
-	cnpjScores := make(map[string]int) // Armazena pontuações dos CNPJs para priorizar o mais relevante
+	cnpjScores := make(map[string]int)
 
 	for _, result := range results {
 		foundCNPJs := append(cnpjRegex.FindAllString(result.Title, -1), cnpjRegex.FindAllString(result.Snippet, -1)...)
@@ -92,7 +90,7 @@ func extractCNPJs(results []OrganicResult, leadName string) []string {
 		for _, match := range foundCNPJs {
 			normalizedCNPJ := NormalizeCNPJ(match)
 			if normalizedCNPJ != "" {
-				// Aumenta a pontuação se o nome do lead for mencionado no resultado
+
 				score := 1
 				if strings.Contains(strings.ToLower(result.Title), strings.ToLower(leadName)) ||
 					strings.Contains(strings.ToLower(result.Snippet), strings.ToLower(leadName)) {
@@ -103,7 +101,6 @@ func extractCNPJs(results []OrganicResult, leadName string) []string {
 		}
 	}
 
-	// Ordenar os CNPJs por relevância (maior pontuação primeiro)
 	var sortedCNPJs []string
 	for cnpj := range cnpjScores {
 		sortedCNPJs = append(sortedCNPJs, cnpj)
@@ -115,7 +112,6 @@ func extractCNPJs(results []OrganicResult, leadName string) []string {
 	return sortedCNPJs
 }
 
-// NormalizeCNPJ formata um CNPJ para o padrão XX.XXX.XXX/XXXX-XX
 func NormalizeCNPJ(cnpj string) string {
 	digits := regexp.MustCompile(`\D`).ReplaceAllString(cnpj, "")
 	if len(digits) == 14 {
