@@ -101,6 +101,30 @@ func CallOlhama(data types.CombinedLeadData) (types.OlhamaResponse, error) {
 
 	return respData, nil
 }
+func CallOlhama2(data types.CombinedLeadData) (types.OlhamaResponse, error) {
+	var respData types.OlhamaResponse
+	var outerResp types.OlhamaOuterResponse
+
+	rawResp, err := Publish(data)
+	if err != nil {
+		return respData, fmt.Errorf("erro ao enviar dados para Olhama 2: %v", err)
+	}
+
+	if err := json.Unmarshal(rawResp, &outerResp); err != nil {
+		return respData, fmt.Errorf("erro ao decodificar resposta externa do Olhama2: %v", err)
+	}
+	log.Printf("CallOlhama2 - Outer Response: %+v", outerResp)
+
+	cleanedStr := cleanResponse(outerResp.Message.Content)
+	cleanedBytes := []byte(cleanedStr)
+
+	if err := json.Unmarshal(cleanedBytes, &respData); err != nil {
+		return respData, fmt.Errorf("erro ao decodificar resposta interna do Olhama2: %v", err)
+	}
+	log.Printf("CallOlhama 2- Inner Response (respData): %+v", respData)
+
+	return respData, nil
+}
 
 func cleanResponse(response string) string {
 	log.Printf("cleanResponse - Raw response received: %s", response)

@@ -21,6 +21,9 @@ type CombinedLeadData struct {
 	SerperData map[string]interface{} `json:"serper_data,omitempty"`
 	CNPJData   map[string]interface{} `json:"cnpj_data,omitempty"`
 	Prompt     string                 `json:"prompt,omitempty"`
+
+	CompanyDetailsCnpjBiz map[string]string      `json:"company_details,omitempty"`
+	InverterData          map[string]interface{} `json:"inverter_data,omitempty"`
 }
 
 type OlhamaPayload struct {
