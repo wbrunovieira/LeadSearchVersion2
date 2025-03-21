@@ -10,7 +10,7 @@ import (
 	"regexp"
 )
 
-func FetchCNPJData(cnpj string) (map[string]interface{}, error) {
+func FetchCNPJDataInverter(cnpj string) (map[string]interface{}, error) {
 
 	cleanCNPJ := regexp.MustCompile(`\D`).ReplaceAllString(cnpj, "")
 	apiToken := os.Getenv("INVERTEXTO_API_TOKEN")
