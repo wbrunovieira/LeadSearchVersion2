@@ -34,11 +34,11 @@ const LeadList: React.FC<LeadListProps> = ({ leads }) => {
                 style={{ marginBottom: '0.5rem' }}
               >
                 <strong>{key}:</strong>{' '}
-                {typeof value === 'object'
+                {value === null || value === undefined
+                  ? 'N/A'
+                  : typeof value === 'object'
                   ? JSON.stringify(value)
-                  : value !== null
-                  ? value.toString()
-                  : 'null'}
+                  : String(value)}
               </li>
             ))}
           </ul>

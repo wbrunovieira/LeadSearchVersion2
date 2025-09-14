@@ -1,47 +1,47 @@
-// interfaces/leadas.ts
+// interfaces/leads.ts
 export interface LeadAPI {
   id: string;
-  businessName: string;
-  registeredName: string;
-  foundationDate?: string; 
-  address: string;
-  city: string;
-  state: string;
-  country: string;
-  zipCode: string;
-  owner: string;
-  source: string;
-  phone: string;
-  whatsapp: string;
-  website: string;
-  email: string;
-  instagram: string;
-  facebook: string;
-  tikTok: string;
-  companyRegistrationID: string;
-  categories: string;
-  rating: number;
-  priceLevel: number;
-  userRatingsTotal: number;
-  vicinity: string;
-  permanentlyClosed: boolean;
-  companySize: string;
-  revenue: number;
-  employeesCount: number;
-  description: string;
-  primaryActivity: string;
-  secondaryActivities: string;
-  types: string;
-  equityCapital: number;
-  businessStatus: string;
-  quality: string;
-  searchTerm: string;
-  fieldsFilled: number;
-  googleId: string;
-  category: string;
-  radius: number;
-  createdAt: string;
-  updatedAt: string;
+  BusinessName: string;
+  RegisteredName: string;
+  FoundationDate?: { Time: string; Valid: boolean };
+  Address: string;
+  City: string;
+  State: string;
+  Country: string;
+  ZIPCode: string;
+  Owner: string;
+  Source: string;
+  Phone: string;
+  Whatsapp: string;
+  Website: string;
+  Email: string;
+  Instagram: string;
+  Facebook: string;
+  TikTok: string;
+  CompanyRegistrationID: string;
+  Categories: string;
+  Rating: number;
+  PriceLevel: number;
+  UserRatingsTotal: number;
+  Vicinity: string;
+  PermanentlyClosed: boolean;
+  CompanySize: string;
+  Revenue: number;
+  EmployeesCount: number;
+  Description: string;
+  PrimaryActivity: string;
+  SecondaryActivities: string;
+  Types: string;
+  EquityCapital: number;
+  BusinessStatus: string;
+  Quality: string;
+  SearchTerm: string;
+  FieldsFilled: number;
+  GoogleId: string;
+  Category: string;
+  Radius: number;
+  CreatedAt: string;
+  UpdatedAt: string;
 }
 
 
@@ -56,7 +56,7 @@ export interface LeadFront {
 
 export const mapLeadAPIToFront = (lead: LeadAPI): LeadFront => ({
   id: lead.id,
-  businessName: lead.businessName,
-  email: lead.email,
-  phone: lead.phone,
+  businessName: lead.BusinessName || '',
+  email: lead.Email || '',
+  phone: lead.Phone || '',
 });
