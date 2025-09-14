@@ -53,6 +53,20 @@ func initRabbitMQ() {
 		log.Fatalf("Erro ao abrir canal do RabbitMQ: %v", err)
 	}
 
+	// Declara exchange fanout para distribuir mensagens para múltiplos consumidores
+	err = rabbitCh.ExchangeDeclare(
+		"leads.fanout", // nome do exchange
+		"fanout",       // tipo
+		true,           // durable
+		false,          // auto-deleted
+		false,          // internal
+		false,          // no-wait
+		nil,            // arguments
+	)
+	if err != nil {
+		log.Fatalf("Erro ao declarar exchange fanout: %v", err)
+	}
+
 	_, err = rabbitCh.QueueDeclare(
 		"lead_queue", // nome da fila
 		true,         // durable
@@ -163,11 +177,12 @@ func PublishCombinedLead(data CombinedLeadData) error {
 		return fmt.Errorf("erro ao converter dados combinados para JSON: %v", err)
 	}
 
+	// Publica no exchange fanout para distribuir para múltiplos consumidores
 	err = rabbitCh.Publish(
-		"",                     // Usando a default exchange
-		"combined_leads_queue", // nome da fila
-		false,                  // mandatory
-		false,                  // immediate
+		"leads.fanout", // exchange
+		"",             // routing key (não usado em fanout)
+		false,          // mandatory
+		false,          // immediate
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        body,

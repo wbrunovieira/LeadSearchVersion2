@@ -172,7 +172,7 @@ services:
       container_name: forwarder
       environment:
         - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
-        - OLHAMA_URL=http://192.168.0.7:11434/api/chat
+        - OLHAMA_URL=http://host.docker.internal:11434/api/chat
       networks:
         - leads-network
       depends_on:

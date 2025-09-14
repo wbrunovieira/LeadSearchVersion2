@@ -64,29 +64,55 @@ func initAMQP() {
 		log.Fatalf("Erro ao abrir canal do RabbitMQ: %v", err)
 	}
 
-	// Declara a fila "combined_leads_queue"
-	_, err = amqpCh.QueueDeclare(
-		"combined_leads_queue", // nome da fila
-		true,                   // durable
-		false,                  // delete when unused
-		false,                  // exclusive
-		false,                  // no-wait
-		nil,                    // arguments
+	// Declara o exchange fanout
+	err = amqpCh.ExchangeDeclare(
+		"leads.fanout", // nome do exchange
+		"fanout",       // tipo
+		true,           // durable
+		false,          // auto-deleted
+		false,          // internal
+		false,          // no-wait
+		nil,            // arguments
 	)
 	if err != nil {
-		log.Fatalf("Erro ao declarar a fila: %v", err)
+		log.Fatalf("Erro ao declarar exchange fanout: %v", err)
+	}
+
+	// Cria fila exclusiva para o datalake
+	_, err = amqpCh.QueueDeclare(
+		"datalake_queue", // nome único da fila
+		true,             // durable
+		false,            // delete when unused
+		false,            // exclusive
+		false,            // no-wait
+		nil,              // arguments
+	)
+	if err != nil {
+		log.Fatalf("Erro ao declarar a fila 'datalake_queue': %v", err)
+	}
+
+	// Faz bind da fila ao exchange fanout
+	err = amqpCh.QueueBind(
+		"datalake_queue", // nome da fila
+		"",               // routing key (não usado em fanout)
+		"leads.fanout",   // exchange
+		false,            // no-wait
+		nil,              // arguments
+	)
+	if err != nil {
+		log.Fatalf("Erro ao fazer bind da fila ao exchange: %v", err)
 	}
 }
 
 func consumeCombinedData() {
 	msgs, err := amqpCh.Consume(
-		"combined_leads_queue", // fila
-		"",                     // consumer tag
-		true,                   // auto-acknowledge
-		false,                  // exclusive
-		false,                  // no-local
-		false,                  // no-wait
-		nil,                    // arguments
+		"datalake_queue", // consome da fila específica do datalake
+		"",               // consumer tag
+		true,             // auto-acknowledge
+		false,            // exclusive
+		false,            // no-local
+		false,            // no-wait
+		nil,              // arguments
 	)
 	if err != nil {
 		log.Fatalf("Erro ao consumir fila: %v", err)

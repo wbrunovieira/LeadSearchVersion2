@@ -19,7 +19,7 @@ func Publish(data types.CombinedLeadData) ([]byte, error) {
 	olhamaURL := os.Getenv("OLHAMA_URL")
 	if olhamaURL == "" {
 
-		olhamaURL = "http://192.168.0.7:11434/api/chat"
+		olhamaURL = "http://localhost:11434/api/chat"
 	}
 
 	combinedJSON, err := json.MarshalIndent(data, "", "  ")

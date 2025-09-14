@@ -38,22 +38,49 @@ func Connect() {
 		log.Fatalf("Erro ao definir QoS: %v", err)
 	}
 
-	_, err = Ch.QueueDeclare(
-		"combined_leads_queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
+	// Declara o exchange fanout
+	err = Ch.ExchangeDeclare(
+		"leads.fanout", // nome do exchange
+		"fanout",       // tipo
+		true,           // durable
+		false,          // auto-deleted
+		false,          // internal
+		false,          // no-wait
+		nil,            // arguments
 	)
 	if err != nil {
-		log.Fatalf("Erro ao declarar a fila 'combined_leads_queue': %v", err)
+		log.Fatalf("Erro ao declarar exchange fanout: %v", err)
+	}
+
+	// Cria fila exclusiva para o forwarder
+	_, err = Ch.QueueDeclare(
+		"forwarder_queue", // nome único da fila
+		true,              // durable
+		false,             // delete when unused
+		false,             // exclusive
+		false,             // no-wait
+		nil,               // arguments
+	)
+	if err != nil {
+		log.Fatalf("Erro ao declarar a fila 'forwarder_queue': %v", err)
+	}
+
+	// Faz bind da fila ao exchange fanout
+	err = Ch.QueueBind(
+		"forwarder_queue", // nome da fila
+		"",                // routing key (não usado em fanout)
+		"leads.fanout",    // exchange
+		false,             // no-wait
+		nil,               // arguments
+	)
+	if err != nil {
+		log.Fatalf("Erro ao fazer bind da fila ao exchange: %v", err)
 	}
 }
 
 func ConsumeQueue() {
 	msgs, err := Ch.Consume(
-		"combined_leads_queue",
+		"forwarder_queue", // consome da fila específica do forwarder
 		"",
 		false,
 		false,
@@ -125,11 +152,12 @@ func ConsumeQueue() {
 				d.Nack(false, true)
 				continue
 			}
-			if err := helpers.UpdateLeadField(data.Lead.ID.String(), "RedesSociais", olhamaResp.RedesSociais); err != nil {
-				log.Printf("Erro ao atualizar RedesSociais: %v", err)
-				d.Nack(false, true)
-				continue
-			}
+			// RedesSociais field doesn't exist in database, skipping update
+			// if err := helpers.UpdateLeadField(data.Lead.ID.String(), "RedesSociais", olhamaResp.RedesSociais); err != nil {
+			// 	log.Printf("Erro ao atualizar RedesSociais: %v", err)
+			// 	d.Nack(false, true)
+			// 	continue
+			// }
 
 			// Etapa 2: Enriquecimento dos dados com informações externas usando o CNPJ retornado.
 			if olhamaResp.CNPJ != "" {
@@ -148,50 +176,9 @@ func ConsumeQueue() {
 				}
 			}
 
-			// Etapa 3: Monta um novo prompt para a análise secundária (Olhama2).
-			data.Prompt = "Você é um analista especialista. Analise os dados do lead a seguir, que foram enriquecidos com informações de buscas no Google, dados do Olhama, e detalhes obtidos das APIs CNPJBIZ e Invertexto. Com base nesses dados, atualize as seguintes informações no banco de dados: Data de Fundação, Owner, Email, PrimaryActivity, SecondaryActivities e EquityCapital. Retorne a resposta estritamente no formato JSON, contendo os campos atualizados e um bloco interno de raciocínio entre <think> e </think>.\n\nExemplo de saída:\n{\n  \"DataDeFundacao\": \"AAAA-MM-DD\",\n  \"Owner\": \"Nome do Responsável\",\n  \"Email\": \"exemplo@dominio.com\",\n  \"PrimaryActivity\": \"Atividade Principal\",\n  \"SecondaryActivities\": \"Atividade Secundária\",\n  \"EquityCapital\": \"Valor\",\n  \"<think>\": \"Breve explicação de como os dados foram analisados...\"\n}"
-			log.Printf("Enviado para Olhama2 com dados enriquecidos: %+v", data)
-
-			olhamaResp2, err := olhama.CallOlhama2(data)
-			if err != nil {
-				log.Printf("Erro ao processar resposta do Olhama2: %v", err)
-				d.Nack(false, true)
-				continue
-			}
-			log.Printf("Bloco de Raciocínio (Olhama2): %s", olhamaResp2.Think)
-
-			// Etapa 4: Atualiza os novos campos retornados pela análise secundária.
-			// Supondo que Olhama2 retorne os campos Email, PrimaryActivity, SecondaryActivities e EquityCapital
-			if err := helpers.UpdateLeadField(data.Lead.ID.String(), "FoundationDate", olhamaResp2.DataDeFundacao); err != nil {
-				log.Printf("Erro ao atualizar FoundationDate (Olhama2): %v", err)
-				d.Nack(false, true)
-				continue
-			}
-			if err := helpers.UpdateLeadField(data.Lead.ID.String(), "Owner", olhamaResp2.Contatos); err != nil {
-				log.Printf("Erro ao atualizar Owner (Olhama2): %v", err)
-				d.Nack(false, true)
-				continue
-			}
-			if err := helpers.UpdateLeadField(data.Lead.ID.String(), "Email", olhamaResp2.Message.Content); err != nil {
-				log.Printf("Erro ao atualizar Email: %v", err)
-				d.Nack(false, true)
-				continue
-			}
-			if err := helpers.UpdateLeadField(data.Lead.ID.String(), "PrimaryActivity", olhamaResp2.Message.Content); err != nil {
-				log.Printf("Erro ao atualizar PrimaryActivity: %v", err)
-				d.Nack(false, true)
-				continue
-			}
-			if err := helpers.UpdateLeadField(data.Lead.ID.String(), "SecondaryActivities", olhamaResp2.Message.Content); err != nil {
-				log.Printf("Erro ao atualizar SecondaryActivities: %v", err)
-				d.Nack(false, true)
-				continue
-			}
-			if err := helpers.UpdateLeadField(data.Lead.ID.String(), "EquityCapital", olhamaResp2.Message.Content); err != nil {
-				log.Printf("Erro ao atualizar EquityCapital: %v", err)
-				d.Nack(false, true)
-				continue
-			}
+			// Etapa 3: Skip second Ollama call for now due to timeout issues
+			// TODO: Fix Ollama2 timeout/truncation issue
+			log.Printf("Skipping Olhama2 analysis due to timeout issues")
 
 			log.Printf("MensagemWhatsApp (Olhama original): %s", olhamaResp.Message.Content)
 			d.Ack(false)
