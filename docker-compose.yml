@@ -1,0 +1,195 @@
+
+services:
+  search-google:
+    build: ./search-google
+    container_name: search-google
+    ports:
+      - "8082:8082"
+    environment:
+      - PORT=8082
+    networks:
+      - leads-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.Name}}/{{.ID}}"
+        labels: "service={{.Name}}"
+
+  db-leads:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=leads_user
+      - POSTGRES_PASSWORD=secret_password
+      - POSTGRES_DB=leads_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leads_user -d leads_db || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+    container_name: db-leads
+    ports:
+      - "5432:5432"
+    networks:
+      - leads-network
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.Name}}/{{.ID}}"
+        labels: "service={{.Name}}"
+
+  front-web:
+    build: ./front-web
+    container_name: front-web
+    ports:
+      - "5173:5173"
+    depends_on:
+      - search-google
+    networks:
+      - leads-network
+
+  api:
+    build: ./api
+    ports:
+      - "8085:8085"
+    environment:
+      - DB_HOST=db-leads
+      - DB_PORT=5432
+      - DB_USER=leads_user
+      - DB_PASSWORD=secret_password
+      - DB_NAME=leads_db
+      - PORT=8085
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      db-leads:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - leads-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.Name}}/{{.ID}}"
+        labels: "service={{.Name}}"
+
+  data-collector:
+    build: ./data-collector
+    ports:
+      - "8086:8086"
+    environment:
+      - PORT=8086
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      db-leads:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - leads-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.Name}}/{{.ID}}"
+        labels: "service={{.Name}}"
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - leads-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.Name}}/{{.ID}}"
+        labels: "service={{.Name}}"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - leads-network
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  datalake:
+    build: ./datalake
+    container_name: datalake
+    environment:
+      - PORT=8087
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    networks:
+      - leads-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "8087:8087"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.Name}}/{{.ID}}"
+        labels: "service=datalake"
+
+  forwarder:
+      build: ./forwarder
+      container_name: forwarder
+      environment:
+        - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+        - OLHAMA_URL=http://192.168.0.7:11434/api/chat
+      networks:
+        - leads-network
+      depends_on:
+        rabbitmq:
+          condition: service_healthy
+      logging:
+        driver: "json-file"
+        options:
+          max-size: "10m"
+          max-file: "3"
+          tag: "{{.Name}}/{{.ID}}"
+          labels: "service=forwarder"
+
+networks:
+  leads-network:
+    driver: bridge
+
+volumes:
+  db_data:
+  es_data:
