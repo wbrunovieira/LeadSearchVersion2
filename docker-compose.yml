@@ -186,6 +186,34 @@ services:
           tag: "{{.Name}}/{{.ID}}"
           labels: "service=forwarder"
 
+  ai-agno:
+    build: ./ai-agno
+    container_name: ai-agno
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DB_HOST=db-leads
+      - DB_PORT=5432
+      - DB_USER=leads_user
+      - DB_PASSWORD=secret_password
+      - DB_NAME=leads_db
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    networks:
+      - leads-network
+    depends_on:
+      db-leads:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./ai-agno:/app/ai-agno
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.Name}}/{{.ID}}"
+        labels: "service=ai-agno"
+
 networks:
   leads-network:
     driver: bridge
